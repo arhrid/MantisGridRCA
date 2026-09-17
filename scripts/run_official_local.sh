@@ -2,7 +2,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${ENV_FILE:-$ROOT/.env.local}"
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
+
 OFFICIAL="${OFFICIAL_TRACK1_DIR:-/Users/benchong/Work/Hackathon/hackathon-2026-official/track-1}"
+STARTER="${STARTER_DIR:-$ROOT/starter}"
 PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
 DATASET="${DATASET:-$OFFICIAL/data/Market-cloudbed-1}"
 QUERIES="${QUERIES:-$DATASET/dev/query_dev.csv}"
@@ -10,9 +19,10 @@ OUT="${OUT:-$OFFICIAL/out/local-dev}"
 AGENT="${AGENT:-agents.heuristic}"
 LIMIT="${LIMIT:-0}"
 RUN_NAME="${RUN_NAME:-$AGENT}"
+CLEAN_OUT="${CLEAN_OUT:-1}"
 
 args=(
-  "$OFFICIAL/starter/run.py"
+  "$STARTER/run.py"
   --dataset "$DATASET"
   --queries "$QUERIES"
   --out "$OUT"
@@ -31,6 +41,11 @@ limit:   $LIMIT
 queries: $QUERIES
 out:     $OUT
 EOF
+
+if [[ "$CLEAN_OUT" != "0" ]]; then
+  rm -rf "$OUT"
+fi
+mkdir -p "$OUT"
 
 "$PYTHON" "${args[@]}"
 

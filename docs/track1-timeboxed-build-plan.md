@@ -240,6 +240,81 @@ Acceptance:
 - We can explain why it wins or fails.
 - We have a defensible next tuning target.
 
+### 5. Automated Run -> Validate -> Tweak Loop
+
+Use the same 10-case slice while tuning. Change one thing at a time.
+
+Default loop:
+
+1. Run `agents.mantis` with a unique `RUN_NAME` and `OUT`.
+2. Validate mechanics:
+   - `predictions.csv` exists.
+   - Each row has a non-empty prediction.
+   - Each row has an evidence file.
+   - Prediction object count matches expected failure count.
+   - Reasons are legal strings.
+3. Score with the same evaluator logic as `starter/score.py`.
+4. Classify every non-perfect case:
+   - `candidate_missing`: expected component not visible in evidence.
+   - `candidate_present_model_wrong`: expected component visible, model chose another.
+   - `reason_wrong`: component is right, reason is wrong.
+   - `time_wrong`: component/reason may be right, timestamp is wrong.
+   - `count_or_format_wrong`: object count or prediction format broke scoring.
+   - `model_failure`: fallback used because the model failed or key was missing.
+   - `unknown`: needs manual inspection.
+5. Pick exactly one tweak based on the largest failure class.
+6. Rerun the same slice and compare score, time, and token/cost.
+7. Keep the tweak only if it improves score or evidence quality without unacceptable cost/time.
+
+Initial automation commands:
+
+```bash
+RUN_NAME=mantis-10-a LIMIT=10 AGENT=agents.mantis OUT=/tmp/rca-mantis-10-a scripts/run_official_local.sh
+scripts/eval_track1.py --out /tmp/rca-mantis-10-a --queries /Users/benchong/Work/Hackathon/hackathon-2026-official/track-1/data/Market-cloudbed-1/dev/query_dev.csv
+```
+
+Tuning rules:
+
+- If `candidate_missing` dominates, improve Python candidate generation.
+- If `candidate_present_model_wrong` dominates, improve the compact decision prompt.
+- If `reason_wrong` dominates, improve KPI/log/trace-to-reason hints.
+- If `time_wrong` dominates, improve first-anomaly timestamp logic.
+- If `model_failure` dominates, adjust model list, retry behavior, or fallback.
+- If `count_or_format_wrong` appears, fix Python validation before any prompt work.
+
+Do not run all 70 repeatedly until the 10-case loop shows improvement. Move to `LIMIT=20` after a useful gain on `LIMIT=10`.
+
+Current observation after the first `mantis` loop:
+
+- `agents.mantis` currently matches the heuristic score on the first 10 cases.
+- The LLM is reachable when the run has network access, but model choice alone did not improve the first two cases.
+- The useful immediate signal is failure classification:
+  - `candidate_present_model_wrong` means the right answer is visible but not selected.
+  - `time_wrong` means candidate choice may be acceptable but timestamp logic needs work.
+- Prompt-only tuning reduced output tokens but did not fix row 0.
+
+Next tuning step:
+
+1. Treat model choice as an explicit knob.
+   - Use `RCA_MODEL=zai-org/GLM-4.7-Flash` for a cheap single-model run.
+   - Use `RCA_MODEL=zai-org/GLM-5.2` for a strong single-model run.
+   - Compare score, wall-clock, prompt tokens, and completion tokens on the same `LIMIT=2` or `LIMIT=10` slice.
+2. If model choice does not move score, stop spending time on model selection and improve evidence generation.
+3. The likely evidence-generation improvement is targeted trace/service relationship summary, because metric-only evidence tends to pick loud symptoms rather than causal components.
+
+Execution notes:
+
+- `RCA_MODEL=zai-org/GLM-4.7-Flash` on the first two cases produced the same score and failure classes as the strong-model run, with lower cost than a strong-only strategy.
+- Adding a compact trace summary is available behind `MANTIS_TRACE_SUMMARY=1`, but the first row-0 test did not improve the answer and added noticeable runtime/prompt overhead.
+- Adding `reason_quality` and `evidence_score` made the candidate packet more honest but did not change the first two answers.
+- Current conclusion: model choice and prompt wording are not the main bottleneck. The next useful work is better telemetry features, especially reason-specific evidence such as read/write I/O, packet loss, retransmission, and process termination signals.
+
+Next execution target:
+
+1. Keep default runs cheap: do not enable trace summary unless testing network/causality cases.
+2. Add a reason-evidence extractor that scores each candidate against the legal reason classes.
+3. Rerun `LIMIT=10` and classify whether failures move from `candidate_present_model_wrong` toward `reason_wrong` or `time_wrong`.
+
 ## Evidence Template
 
 Each `evidence/<row_id>.md` should include:
