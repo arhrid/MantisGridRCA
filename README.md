@@ -8,6 +8,47 @@ The project runs headless over the `Market-cloudbed-1` bundle and writes:
 - `evidence/<row_id>.md`
 - `usage.jsonl`
 
+## Expected Output
+
+The submission must write all outputs under the `--out` directory passed to `run.py`.
+
+```text
+<out>/
+  predictions.csv
+  usage.jsonl
+  evidence/
+    <row_id>.md
+```
+
+`predictions.csv` contains one row per query. The important columns are:
+
+- `row_id`
+- `prediction`
+- `task_index`
+- `wall_s`
+- `prompt_tokens`
+- `completion_tokens`
+- `calls`
+
+The `prediction` field is a fenced JSON object. The evaluator expects answer keys in this order:
+
+1. `root cause occurrence datetime`
+2. `root cause component`
+3. `root cause reason`
+
+Use `format_prediction()` in `run.py` so the key order stays valid. The agent may omit fields that were not requested by the query, but it must emit exactly the requested number of failure objects.
+
+Each `evidence/<row_id>.md` file should explain the answer for human review. Our evidence files use:
+
+- `## Answer`
+- `## Confidence`
+- `## Evidence`
+- `## Ruled out`
+- `## Limitations`
+- `## Model usage` when model calls are made
+
+`usage.jsonl` records per-case wall time and token usage by model. This supports cost and time comparisons.
+
 ## Official Sources
 
 The official hackathon repo may be cloned separately at:
@@ -114,9 +155,9 @@ docker run --rm \
 
 ## Agent
 
-Default agent: `agents.telemetry_routed`.
+Default agent: `starter.agents.mantis`.
 
-It parses the window and failure count from each instruction, builds bounded candidates from metrics, logs, and traces, and emits a best guess even when telemetry or model calls are inconclusive. Evidence files include the selected answer, confidence, telemetry facts used, and nearby candidates ruled out.
+It parses the window and failure count from each instruction, builds bounded candidates from telemetry summaries, uses query-aware output shaping, and emits a best guess even when model calls are inconclusive. Evidence files include the selected answer, confidence, telemetry facts used, nearby candidates ruled out, limitations, and model usage where applicable.
 
 ## AI Tool Disclosure
 
