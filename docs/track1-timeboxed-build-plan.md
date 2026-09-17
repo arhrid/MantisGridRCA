@@ -315,6 +315,26 @@ Next execution target:
 2. Add a reason-evidence extractor that scores each candidate against the legal reason classes.
 3. Rerun `LIMIT=10` and classify whether failures move from `candidate_present_model_wrong` toward `reason_wrong` or `time_wrong`.
 
+Current reason-evidence slice:
+
+- Added candidate-level `reason_evidence` to `agents.mantis`.
+- The extractor keeps one strongest KPI per legal reason family instead of letting repeated noisy network counters fill the evidence packet.
+- Evidence is labelled by source:
+  - `candidate_metric`: metric belongs directly to the candidate component.
+  - `host_node_metric`: metric belongs to the node hosting a pod candidate, useful but weaker than direct candidate evidence.
+- Added a weak `inferred_storage` hint for pod filesystem usage metrics such as `container_fs_usage_MB.*`, because this dataset may expose storage pressure without explicit container read/write byte counters.
+- The prompt now tells the LLM to use `reason_evidence`, prefer direct candidate metrics over host-node support, and treat inferred storage as weaker than direct read/write counters.
+- Local no-network smoke test passes and evidence now surfaces `shippingservice-1` with `container read I/O load` support, but the fallback prediction remains the old heuristic because the LLM call is unavailable in sandboxed local validation.
+
+Next validation step:
+
+```bash
+LIMIT=10 RUN_NAME=mantis-reason-10 AGENT=agents.mantis RCA_MODEL=zai-org/GLM-4.7-Flash OUT=/tmp/rca-mantis-reason-10 scripts/run_official_local.sh
+scripts/eval_track1.py --out /tmp/rca-mantis-reason-10 --queries /Users/benchong/Work/Hackathon/hackathon-2026-official/track-1/data/Market-cloudbed-1/dev/query_dev.csv
+```
+
+This sends bounded telemetry-derived summaries to Featherless. Get team approval for that data flow before using it in the judged workflow.
+
 ## Evidence Template
 
 Each `evidence/<row_id>.md` should include:

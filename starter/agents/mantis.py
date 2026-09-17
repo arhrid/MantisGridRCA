@@ -31,6 +31,7 @@ from agents.heuristic import (  # noqa: E402
 STRONG = ["zai-org/GLM-5.2", "zai-org/GLM-5.1"]
 CANDIDATES = 12
 KPIS_EACH = 4
+REASON_EVIDENCE_EACH = 6
 
 
 def _model(tier: list[str]) -> list[str]:
@@ -48,6 +49,75 @@ def _component_service(component: str) -> str:
     if component.startswith("node-"):
         return component
     return re.sub(r"-\d+$", "", component)
+
+
+def _host_node(row: pd.Series) -> str | None:
+    cmdb_id = str(row.get("cmdb_id", ""))
+    match = re.match(r"(node-\d+)\.", cmdb_id)
+    return match.group(1) if match else None
+
+
+def _reason_hint(kpi: str, component: str) -> tuple[str | None, str]:
+    reason = reason_for(kpi, component)
+    if reason:
+        return reason, "direct"
+    lowered = kpi.lower()
+    if not component.startswith("node-") and any(
+        part in lowered for part in ("fs_usage", "filesystem", "disk_usage")
+    ):
+        return "container read I/O load", "inferred_storage"
+    return None, ""
+
+
+def _reason_evidence_for_rows(rows: pd.DataFrame, component: str, source: str) -> list[dict]:
+    evidence = []
+    for row in rows.head(40).itertuples(index=False):
+        reason, hint = _reason_hint(str(row.kpi_name), component)
+        if not reason:
+            continue
+        evidence.append({
+            "reason": reason,
+            "kpi": str(row.kpi_name),
+            "z": round(float(row.z), 1),
+            "source": source,
+            "hint": hint,
+        })
+    evidence.sort(key=lambda item: item["z"], reverse=True)
+    seen = set()
+    unique = []
+    for item in evidence:
+        key = (item["reason"], item["source"])
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+        if len(unique) >= REASON_EVIDENCE_EACH:
+            break
+    return unique
+
+
+def _reason_evidence(a: Analysis, component: str, kpis: pd.DataFrame) -> tuple[list[dict], str]:
+    direct = _reason_evidence_for_rows(kpis, component, "candidate_metric")
+    if component.startswith("node-"):
+        return direct, "direct_kpi_match" if direct else "fallback_reason"
+
+    hosts = {
+        host
+        for host in (_host_node(row) for _, row in kpis.head(20).iterrows())
+        if host and host in a.ranked.index
+    }
+    host_evidence: list[dict] = []
+    for host in sorted(hosts):
+        host_rows = a.j[a.j.component == host]
+        host_evidence.extend(_reason_evidence_for_rows(host_rows, host, "host_node_metric")[:3])
+    combined = direct + host_evidence
+    if direct:
+        quality = "direct_kpi_match"
+    elif host_evidence:
+        quality = "host_node_support_only"
+    else:
+        quality = "fallback_reason"
+    return combined[:REASON_EVIDENCE_EACH], quality
 
 
 def _candidate_rows(a: Analysis, service_rows: list[dict]) -> list[dict]:
@@ -75,14 +145,18 @@ def _candidate_rows(a: Analysis, service_rows: list[dict]) -> list[dict]:
 
     for rank, component in enumerate(components[:CANDIDATES], 1):
         z = a.ranked[component]
-        kpis = a.j[a.j.component == component].head(KPIS_EACH)
+        component_kpis = a.j[a.j.component == component]
+        kpis = component_kpis.head(KPIS_EACH)
         heuristic = answer_for(a, component)
-        top_reason = reason_for(kpis.iloc[0].kpi_name, component) if len(kpis) else None
-        reason_quality = "direct_kpi_match" if top_reason else "fallback_reason"
+        reason_evidence, reason_quality = _reason_evidence(a, component, component_kpis)
         service_match = _component_service(component) in symptomatic_services
         evidence_score = float(z)
         if reason_quality == "fallback_reason":
             evidence_score *= 0.2
+        elif reason_quality == "host_node_support_only":
+            evidence_score *= 0.5
+        if reason_evidence:
+            evidence_score += min(max(item["z"] for item in reason_evidence), 100.0) * 0.5
         if service_match:
             evidence_score += 75.0
         rows.append({
@@ -94,6 +168,7 @@ def _candidate_rows(a: Analysis, service_rows: list[dict]) -> list[dict]:
             "service_match": service_match,
             "heuristic_reason": heuristic["reason"],
             "reason_quality": reason_quality,
+            "reason_evidence": reason_evidence,
             "heuristic_time": heuristic["datetime"],
             "top_kpis": [
                 {"kpi": str(k.kpi_name), "z": round(float(k.z), 1)}
@@ -241,6 +316,9 @@ def _decide_with_llm(
             "When a pod/service candidate appears in both candidate_components and service_symptoms, consider it seriously even if its peak_z is lower than a node.",
             "When a candidate also has trace_symptoms with high p95_ratio or errors, use that as causal evidence.",
             "Treat candidate_components.reason_quality=fallback_reason as weak evidence; it means the top KPI did not map cleanly to the proposed reason.",
+            "Use candidate_components.reason_evidence to select the legal reason; candidate_metric evidence is stronger than host_node_metric evidence.",
+            "Reason evidence with hint=inferred_storage is weaker than direct keyword evidence, but it can support container read/write I/O when the dataset exposes filesystem usage instead of read/write counters.",
+            "host_node_metric evidence can explain a pod through its host, but should not override direct candidate_metric evidence.",
             "For service-level symptoms, prefer the matching pod candidate over unrelated noisy peers unless there is direct node resource evidence.",
             "Keep the JSON compact: no prose outside JSON and no long explanations.",
             "Reply with JSON only.",
@@ -299,10 +377,14 @@ def _evidence(
     lines += ["", "## Evidence", "", "Top metric candidates:"]
     for row in candidates:
         kpis = ", ".join(f"{k['kpi']} z={k['z']}" for k in row["top_kpis"][:3])
+        reasons = ", ".join(
+            f"{r['reason']} via {r['source']}:{r['kpi']} z={r['z']}"
+            for r in row.get("reason_evidence", [])[:3]
+        ) or "no mapped reason-specific KPI"
         lines.append(
             f"- `{row['component']}`: evidence score={row['evidence_score']}, peak z={row['peak_z']}; "
             f"heuristic reason `{row['heuristic_reason']}` ({row['reason_quality']}) "
-            f"at {row['heuristic_time']}; service_match={row['service_match']}; {kpis}"
+            f"at {row['heuristic_time']}; service_match={row['service_match']}; {kpis}; reasons: {reasons}"
         )
     if service_rows:
         lines += ["", "Service-level symptoms:"]
