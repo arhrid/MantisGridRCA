@@ -395,6 +395,13 @@ Track every scoring/cost tweak here so we do not re-test the same idea without a
 - Notes: this targets `time_wrong` and `reason_wrong` without hard reranking candidates.
 - Architecture note: the intended shape is small/cheap NL-to-task-spec parsing, deterministic local telemetry retrieval over the parsed timespan, then a stronger LLM over the bounded evidence packet. The current implementation uses deterministic parsing first; a small LLM classifier can be added later only for ambiguous instructions.
 
+### Tweak 13: Compact LLM decision output
+
+- Change: serialize the LLM prompt as compact JSON and cap decision completions at `RCA_MAX_TOKENS`, defaulting to `300`.
+- Result: pending LLM-backed validation.
+- Keep: likely, unless JSON parsing quality drops.
+- Notes: `scoring.md` gives cost/time real weight. Deterministic evidence files still contain the detailed explanation, so the LLM does not need to spend expensive output tokens writing prose.
+
 ### Current Read
 
 - `mantis-reason-10` on rows 1-10 scored `0.200`, `1 / 10` fully solved, `234.6s` total runtime, `67,169` prompt tokens, and `5,000` completion tokens.
@@ -402,11 +409,14 @@ Track every scoring/cost tweak here so we do not re-test the same idea without a
 - The rows 11-20 holdout initially scored `0.000`, but rows 12-19 were invalid because the parser treated UTC+8 instruction times as UTC. Do not use that holdout score for model-quality conclusions.
 - `mantis-tz-10` scored `0.175`: `candidate_present_model_wrong: 4`, `time_wrong: 4`, `reason_wrong: 2`.
 - `mantis-tz-holdout-11-20` scored `0.075`: `candidate_present_model_wrong: 3`, `time_wrong: 3`, `candidate_missing: 2`, `reason_wrong: 2`.
+- `mantis-shaped-10` scored `0.275`, with `1 / 10` fully solved.
+- `mantis-shaped-holdout-11-20` scored `0.125`, with `0 / 10` fully solved.
+- `scoring.md` says accuracy, evidence/explainability, evaluation quality, and cost efficiency all matter. The state of the art is roughly one strict success in nine, so honest evidence, eval comparisons, and cost routing are important even when most cases are wrong.
 
 Next execution target:
 
-1. Rerun rows 1-10 after query-aware output shaping.
-2. Then rerun rows 11-20 as a holdout slice.
+1. Validate compact LLM output on rows 1-10 and rows 11-20.
+2. If accuracy does not drop, keep compact output for better cost/time.
 3. If `time_wrong` remains high, improve time candidate generation rather than candidate coverage.
 4. If `candidate_present_model_wrong` remains high, compress candidates with soft buckets instead of hard reranking.
 

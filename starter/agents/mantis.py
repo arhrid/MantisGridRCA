@@ -34,6 +34,7 @@ KPIS_EACH = 4
 REASON_EVIDENCE_EACH = 6
 LEGAL_BACKFILL = 10
 TIME_CANDIDATES = 8
+LLM_MAX_TOKENS = 300
 
 
 def _model(tier: list[str]) -> list[str]:
@@ -440,6 +441,7 @@ def _decide_with_llm(
             "Reason evidence with hint=inferred_storage is weaker than direct keyword evidence, but it can support container read/write I/O when the dataset exposes filesystem usage instead of read/write counters.",
             "host_node_metric evidence can explain a pod through its host, but should not override direct candidate_metric evidence.",
             "For service-level symptoms, prefer the matching pod candidate over unrelated noisy peers unless there is direct node resource evidence.",
+            "Keep why under 20 words and ruled_out to at most 3 short items.",
             "Keep the JSON compact: no prose outside JSON and no long explanations.",
             "Reply with JSON only.",
         ],
@@ -450,7 +452,8 @@ def _decide_with_llm(
             "ruled_out": [{"component": "...", "why": "..."}],
         },
     }
-    text = llm.ask(_model(STRONG), json.dumps(prompt, indent=2), max_tokens=500)
+    max_tokens = int(os.environ.get("RCA_MAX_TOKENS", LLM_MAX_TOKENS))
+    text = llm.ask(_model(STRONG), json.dumps(prompt, separators=(",", ":")), max_tokens=max_tokens)
     decision = _json(text)
     answers = _validated_answers(a, requested_fields, decision.get("answers") or [], time_rows)
     return answers, decision, llm.usage
