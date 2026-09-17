@@ -4,7 +4,7 @@ OUT ?= out/dev
 AGENT ?= starter.agents.mantis
 N ?= 2
 
-.PHONY: validate dev score cost docker clean
+.PHONY: validate dev score cost compare docker clean
 
 validate:
 	$(PYTHON) run.py --dataset $(DATASET) --queries $(DATASET)/dev/query_dev.csv --out $(OUT) --agent $(AGENT) --limit $(N)
@@ -18,6 +18,9 @@ score:
 
 cost:
 	$(PYTHON) cost.py $(OUT)/usage.jsonl
+
+compare:
+	$(PYTHON) scripts/compare_runs.py --queries $(DATASET)/dev/query_dev.csv --out $(OUT)
 
 docker:
 	docker build -t mantisgrid-rca .
