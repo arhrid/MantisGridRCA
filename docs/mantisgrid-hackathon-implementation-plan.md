@@ -10,12 +10,16 @@ This document is intentionally operational. The Track 1 and Track 2 POR docs exp
 
 Status: planning.
 
-No implementation has started yet.
+Workspace update:
+
+- Track 1 repo is cloned at `/Users/benchong/Work/Hackathon/MantisGridRCA`.
+- Remote: `https://github.com/arhrid/MantisGridRCA`.
+- Repo currently contains planning docs only; no implementation has started yet.
+- Runtime decision: run locally with a Python environment, not Docker, unless later hackathon instructions require packaging.
 
 Current docs:
 
 - `mantisgrid-track1-rca-por.md`
-- `mantisgrid-track2-cluster-efficiency-por.md`
 - `mantisgrid-codex-hackathon-guidelines.md`
 - `mantisgrid-hackathon-implementation-plan.md`
 
