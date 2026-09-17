@@ -33,6 +33,7 @@ CANDIDATES = 12
 KPIS_EACH = 4
 REASON_EVIDENCE_EACH = 6
 LEGAL_BACKFILL = 10
+TIME_CANDIDATES = 8
 
 
 def _model(tier: list[str]) -> list[str]:
@@ -50,6 +51,36 @@ def _component_service(component: str) -> str:
     if component.startswith("node-"):
         return component
     return re.sub(r"-\d+$", "", component)
+
+
+def _requested_fields(instruction: str) -> list[str]:
+    text = instruction.lower()
+    fields = []
+    if any(phrase in text for phrase in ("occurrence datetime", "occurrence time", "exact time")):
+        fields.append("datetime")
+    if any(phrase in text for phrase in ("specific component", "affected component", "responsible component", "component responsible")):
+        fields.append("component")
+    if any(word in text for word in ("reason", "underlying")):
+        fields.append("reason")
+    return fields or ["datetime", "component", "reason"]
+
+
+def _shape_answers(answers: list[dict], fields: list[str]) -> list[dict]:
+    allowed = {
+        "datetime": "datetime",
+        "component": "component",
+        "reason": "reason",
+    }
+    return [
+        {value: answer[value] for field, value in allowed.items() if field in fields and answer.get(value)}
+        for answer in answers
+    ]
+
+
+def _fallback_answers(a: Analysis, fields: list[str], time_rows: list[dict] | None = None) -> list[dict]:
+    if fields == ["datetime"] and time_rows:
+        return _shape_answers(time_rows[:a.n], fields)
+    return _shape_answers([answer_for(a, c) for c in a.ranked.head(a.n).index], fields)
 
 
 def _host_node(row: pd.Series) -> str | None:
@@ -270,6 +301,39 @@ def _service_summary(a: Analysis, dataset_dir: Path) -> list[dict]:
     return rows
 
 
+def _time_candidates(a: Analysis, candidates: list[dict]) -> list[dict]:
+    rows = []
+    seen = set()
+    candidate_components = {row["component"] for row in candidates[:12]}
+    for row in a.j.itertuples(index=False):
+        if str(row.component) not in candidate_components:
+            continue
+        series = a.inw[(a.inw.cmdb_id == row.cmdb_id) & (a.inw.kpi_name == row.kpi_name)]
+        if series.empty:
+            continue
+        threshold = float(row.med) + (3.0 * 1.4826 * float(row.mad))
+        lower = float(row.med) - (3.0 * 1.4826 * float(row.mad))
+        anomalous = series[(series.value >= threshold) | (series.value <= lower)]
+        first = anomalous.iloc[0] if not anomalous.empty else series.iloc[0]
+        peak = series.loc[(series.value - float(row.med)).abs().idxmax()]
+        for label, sample in (("first_anomaly", first), ("peak", peak)):
+            when = pd.to_datetime(float(sample.timestamp), unit="s", utc=True).tz_convert("Asia/Shanghai")
+            key = (when.strftime("%Y-%m-%d %H:%M:%S"), str(row.component), label)
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append({
+                "datetime": when.strftime("%Y-%m-%d %H:%M:%S"),
+                "component": str(row.component),
+                "kpi": str(row.kpi_name),
+                "kind": label,
+                "z": round(float(row.z), 1),
+            })
+        if len(rows) >= TIME_CANDIDATES:
+            break
+    return rows[:TIME_CANDIDATES]
+
+
 def _trace_summary(a: Analysis, dataset_dir: Path, candidates: list[dict]) -> list[dict]:
     path = dataset_dir / "telemetry" / a.lo.strftime("%Y_%m_%d") / "trace" / "trace_span.csv"
     if not path.exists():
@@ -336,9 +400,11 @@ def _trace_summary(a: Analysis, dataset_dir: Path, candidates: list[dict]) -> li
 
 def _decide_with_llm(
     a: Analysis,
+    requested_fields: list[str],
     candidates: list[dict],
     service_rows: list[dict],
     trace_rows: list[dict],
+    time_rows: list[dict],
 ) -> tuple[list[dict], dict, dict]:
     llm = LLM()
     legal = sorted(set(NODE_REASONS.values()) | set(POD_REASONS.values()))
@@ -350,14 +416,21 @@ def _decide_with_llm(
             "timezone_note": "timestamps in predictions must use the dataset's UTC+8 convention",
         },
         "failure_count": a.n,
+        "requested_output": {
+            "fields": requested_fields,
+            "note": "Optimize only these fields; unrequested fields will be omitted from the final prediction.",
+        },
         "legal_reasons": legal,
         "candidate_components": candidates,
+        "time_candidates": time_rows,
         "service_symptoms": service_rows,
         "trace_symptoms": trace_rows,
         "instructions": [
             "Choose exactly failure_count answers.",
-            "Pick components only from candidate_components.component.",
-            "Pick reasons exactly from legal_reasons.",
+            "Only provide fields listed in requested_output.fields.",
+            "If component is requested, pick components only from candidate_components.component.",
+            "If reason is requested, pick reasons exactly from legal_reasons.",
+            "If datetime is requested, prefer datetimes from time_candidates.datetime unless the evidence strongly supports another time inside the window.",
             "Prefer root causes over downstream symptoms.",
             "Do not choose a node only because aggregate TCP/network counters are huge; node network counters often reflect downstream traffic.",
             "When a pod/service candidate appears in both candidate_components and service_symptoms, consider it seriously even if its peak_z is lower than a node.",
@@ -371,7 +444,7 @@ def _decide_with_llm(
             "Reply with JSON only.",
         ],
         "response_schema": {
-            "answers": [{"component": "...", "reason": "..."}],
+            "answers": [{"datetime": "...", "component": "...", "reason": "..."}],
             "confidence": "low|medium|high",
             "why": "brief reasoning",
             "ruled_out": [{"component": "...", "why": "..."}],
@@ -379,26 +452,33 @@ def _decide_with_llm(
     }
     text = llm.ask(_model(STRONG), json.dumps(prompt, indent=2), max_tokens=500)
     decision = _json(text)
-    answers = _validated_answers(a, decision.get("answers") or [])
+    answers = _validated_answers(a, requested_fields, decision.get("answers") or [], time_rows)
     return answers, decision, llm.usage
 
 
-def _validated_answers(a: Analysis, picks: list[dict]) -> list[dict]:
-    fallback = [answer_for(a, c) for c in a.ranked.head(a.n).index]
+def _validated_answers(
+    a: Analysis,
+    requested_fields: list[str],
+    picks: list[dict],
+    time_rows: list[dict],
+) -> list[dict]:
+    fallback = _fallback_answers(a, requested_fields, time_rows)
     legal = set(NODE_REASONS.values()) | set(POD_REASONS.values())
+    allowed_times = {row["datetime"] for row in time_rows}
     answers = []
     for i in range(a.n):
         pick = picks[i] if i < len(picks) and isinstance(picks[i], dict) else {}
         component = pick.get("component")
         reason = pick.get("reason")
-        if component not in a.ranked.index:
-            answers.append(fallback[i])
-            continue
-        answer = answer_for(a, component)
-        if reason in legal:
+        answer = fallback[i].copy() if i < len(fallback) else {}
+        if component in a.ranked.index:
+            answer = answer_for(a, component)
+        if "reason" in requested_fields and reason in legal:
             answer["reason"] = reason
+        if "datetime" in requested_fields and pick.get("datetime") in allowed_times:
+            answer["datetime"] = pick["datetime"]
         answers.append(answer)
-    return answers
+    return _shape_answers(answers, requested_fields)
 
 
 def _evidence(
@@ -407,15 +487,21 @@ def _evidence(
     candidates: list[dict],
     service_rows: list[dict],
     trace_rows: list[dict],
+    time_rows: list[dict],
     decision: dict,
     notes: list[str],
     usage: dict,
 ) -> str:
     lines = ["## Answer", ""]
     for i, answer in enumerate(answers, 1):
-        lines.append(
-            f"{i}. `{answer['component']}` / `{answer['reason']}` / `{answer['datetime']}`"
-        )
+        parts = []
+        if answer.get("component"):
+            parts.append(f"`{answer['component']}`")
+        if answer.get("reason"):
+            parts.append(f"`{answer['reason']}`")
+        if answer.get("datetime"):
+            parts.append(f"`{answer['datetime']}`")
+        lines.append(f"{i}. " + " / ".join(parts))
     lines += ["", "## Confidence", ""]
     confidence = decision.get("confidence", "low")
     why = decision.get("why") or "First slice: confidence is conservative until logs/traces are added."
@@ -433,6 +519,13 @@ def _evidence(
             f"heuristic reason `{row['heuristic_reason']}` ({row['reason_quality']}) "
             f"at {row['heuristic_time']}; service_match={row['service_match']}; {kpis}; reasons: {reasons}"
         )
+    if time_rows:
+        lines += ["", "Time candidates:"]
+        for row in time_rows:
+            lines.append(
+                f"- `{row['datetime']}`: {row['kind']} for `{row['component']}` "
+                f"on `{row['kpi']}` z={row['z']}"
+            )
     if service_rows:
         lines += ["", "Service-level symptoms:"]
         for row in service_rows[:5]:
@@ -482,6 +575,8 @@ def solve(instruction: str, dataset_dir: Path, ctx: dict) -> Solution:
 
     service_rows = _service_summary(a, Path(dataset_dir))
     candidates = _candidate_rows(a, service_rows)
+    requested_fields = _requested_fields(instruction)
+    time_rows = _time_candidates(a, candidates)
     trace_rows = []
     if os.environ.get("MANTIS_TRACE_SUMMARY") == "1":
         trace_rows = _trace_summary(a, Path(dataset_dir), candidates)
@@ -490,10 +585,17 @@ def solve(instruction: str, dataset_dir: Path, ctx: dict) -> Solution:
     usage: dict = {}
 
     try:
-        answers, decision, usage = _decide_with_llm(a, candidates, service_rows, trace_rows)
+        answers, decision, usage = _decide_with_llm(
+            a,
+            requested_fields,
+            candidates,
+            service_rows,
+            trace_rows,
+            time_rows,
+        )
     except Exception as exc:
         notes.append(f"LLM decision failed or was unavailable: {type(exc).__name__}: {exc}")
-        answers = [answer_for(a, c) for c in a.ranked.head(a.n).index]
+        answers = _fallback_answers(a, requested_fields, time_rows)
 
-    evidence = _evidence(a, answers, candidates, service_rows, trace_rows, decision, notes, usage)
+    evidence = _evidence(a, answers, candidates, service_rows, trace_rows, time_rows, decision, notes, usage)
     return Solution(prediction=format_prediction(answers), evidence=evidence, usage=usage)

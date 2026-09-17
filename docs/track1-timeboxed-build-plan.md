@@ -384,17 +384,31 @@ Track every scoring/cost tweak here so we do not re-test the same idea without a
 - Keep: yes.
 - Notes: this changes all time windows, so rerun rows 1-10 and rows 11-20 before comparing further prompt/model tweaks.
 
+### Tweak 12: Query-aware output shaping and time candidates
+
+- Change: parse the instruction to determine which fields are requested: datetime, component, reason, or a combination.
+- Change: pass `requested_output` and compact `time_candidates` to the LLM.
+- Change: omit unrequested fields from final predictions.
+- Change: use deterministic time candidates as the fallback for time-only tasks, instead of falling back to arbitrary component peak guesses.
+- Result: local no-LLM smoke checks show time-only rows emit only datetimes and reason-only rows emit only reasons.
+- Keep: pending LLM-backed validation.
+- Notes: this targets `time_wrong` and `reason_wrong` without hard reranking candidates.
+- Architecture note: the intended shape is small/cheap NL-to-task-spec parsing, deterministic local telemetry retrieval over the parsed timespan, then a stronger LLM over the bounded evidence packet. The current implementation uses deterministic parsing first; a small LLM classifier can be added later only for ambiguous instructions.
+
 ### Current Read
 
 - `mantis-reason-10` on rows 1-10 scored `0.200`, `1 / 10` fully solved, `234.6s` total runtime, `67,169` prompt tokens, and `5,000` completion tokens.
 - `mantis-backfill-10` on rows 1-10 also scored `0.200`, but moved `candidate_missing` from `4` to `0`, so true components are now visible and the remaining issue is mostly choice/ranking.
 - The rows 11-20 holdout initially scored `0.000`, but rows 12-19 were invalid because the parser treated UTC+8 instruction times as UTC. Do not use that holdout score for model-quality conclusions.
+- `mantis-tz-10` scored `0.175`: `candidate_present_model_wrong: 4`, `time_wrong: 4`, `reason_wrong: 2`.
+- `mantis-tz-holdout-11-20` scored `0.075`: `candidate_present_model_wrong: 3`, `time_wrong: 3`, `candidate_missing: 2`, `reason_wrong: 2`.
 
 Next execution target:
 
-1. Rerun rows 1-10 to check whether `candidate_missing` drops after the legal-signal backfill.
-2. Then run rows 11-20 as a holdout slice so we do not overfit the first 10 rows.
-3. If candidate coverage improves but score does not, inspect whether the failure moved to `candidate_present_model_wrong`, `reason_wrong`, or `time_wrong`.
+1. Rerun rows 1-10 after query-aware output shaping.
+2. Then rerun rows 11-20 as a holdout slice.
+3. If `time_wrong` remains high, improve time candidate generation rather than candidate coverage.
+4. If `candidate_present_model_wrong` remains high, compress candidates with soft buckets instead of hard reranking.
 
 Current reason-evidence slice:
 
