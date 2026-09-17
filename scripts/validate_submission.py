@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pandas as pd
 
+EVIDENCE_SECTIONS = ("Answer", "Confidence", "Evidence", "Ruled out")
+
 
 def wanted_count(instruction: str) -> int:
     t = instruction.lower()
@@ -23,6 +25,21 @@ def parse_prediction(text: str) -> dict:
     if not m:
         raise ValueError("prediction has no JSON object")
     return json.loads(m.group(0))
+
+
+def validate_evidence(path: Path) -> list[str]:
+    if not path.exists():
+        return [f"missing {path.name}"]
+    text = path.read_text()
+    found = re.findall(r"^##\s+(.+?)\s*$", text, flags=re.M)
+    errors = []
+    for section in EVIDENCE_SECTIONS:
+        if section not in found:
+            errors.append(f"{path.name}: missing ## {section}")
+    extras = [section for section in found if section not in EVIDENCE_SECTIONS]
+    if extras:
+        errors.append(f"{path.name}: unexpected top-level section(s): {', '.join(extras)}")
+    return errors
 
 
 def main() -> None:
@@ -43,8 +60,8 @@ def main() -> None:
         if rid not in by_id:
             errors.append(f"missing prediction for row_id={rid}")
             continue
-        if not (out / "evidence" / f"{rid}.md").exists():
-            errors.append(f"missing evidence/{rid}.md")
+        evidence_errors = validate_evidence(out / "evidence" / f"{rid}.md")
+        errors.extend(f"evidence/{err}" for err in evidence_errors)
         try:
             obj = parse_prediction(by_id[rid])
         except Exception as e:
