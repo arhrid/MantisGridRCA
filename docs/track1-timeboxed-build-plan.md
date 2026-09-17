@@ -302,6 +302,19 @@ Next tuning step:
 2. If model choice does not move score, stop spending time on model selection and improve evidence generation.
 3. The likely evidence-generation improvement is targeted trace/service relationship summary, because metric-only evidence tends to pick loud symptoms rather than causal components.
 
+Execution notes:
+
+- `RCA_MODEL=zai-org/GLM-4.7-Flash` on the first two cases produced the same score and failure classes as the strong-model run, with lower cost than a strong-only strategy.
+- Adding a compact trace summary is available behind `MANTIS_TRACE_SUMMARY=1`, but the first row-0 test did not improve the answer and added noticeable runtime/prompt overhead.
+- Adding `reason_quality` and `evidence_score` made the candidate packet more honest but did not change the first two answers.
+- Current conclusion: model choice and prompt wording are not the main bottleneck. The next useful work is better telemetry features, especially reason-specific evidence such as read/write I/O, packet loss, retransmission, and process termination signals.
+
+Next execution target:
+
+1. Keep default runs cheap: do not enable trace summary unless testing network/causality cases.
+2. Add a reason-evidence extractor that scores each candidate against the legal reason classes.
+3. Rerun `LIMIT=10` and classify whether failures move from `candidate_present_model_wrong` toward `reason_wrong` or `time_wrong`.
+
 ## Evidence Template
 
 Each `evidence/<row_id>.md` should include:

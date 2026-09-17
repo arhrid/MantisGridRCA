@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
@@ -23,6 +24,7 @@ from agents.heuristic import (  # noqa: E402
     Analysis,
     analyse,
     answer_for,
+    reason_for,
     solve as heuristic_solve,
 )
 
@@ -51,6 +53,7 @@ def _component_service(component: str) -> str:
 def _candidate_rows(a: Analysis, service_rows: list[dict]) -> list[dict]:
     rows = []
     components = list(a.ranked.head(8).index)
+    symptomatic_services = {row["service"].replace("-grpc", "") for row in service_rows[:5]}
     service_matches: list[list[str]] = []
     for service_row in service_rows[:5]:
         service = service_row["service"].replace("-grpc", "")
@@ -74,18 +77,32 @@ def _candidate_rows(a: Analysis, service_rows: list[dict]) -> list[dict]:
         z = a.ranked[component]
         kpis = a.j[a.j.component == component].head(KPIS_EACH)
         heuristic = answer_for(a, component)
+        top_reason = reason_for(kpis.iloc[0].kpi_name, component) if len(kpis) else None
+        reason_quality = "direct_kpi_match" if top_reason else "fallback_reason"
+        service_match = _component_service(component) in symptomatic_services
+        evidence_score = float(z)
+        if reason_quality == "fallback_reason":
+            evidence_score *= 0.2
+        if service_match:
+            evidence_score += 75.0
         rows.append({
             "rank": rank,
             "component": component,
             "service": _component_service(component),
             "peak_z": round(float(z), 1),
+            "evidence_score": round(evidence_score, 1),
+            "service_match": service_match,
             "heuristic_reason": heuristic["reason"],
+            "reason_quality": reason_quality,
             "heuristic_time": heuristic["datetime"],
             "top_kpis": [
                 {"kpi": str(k.kpi_name), "z": round(float(k.z), 1)}
                 for k in kpis.itertuples()
             ],
         })
+    rows.sort(key=lambda row: row["evidence_score"], reverse=True)
+    for rank, row in enumerate(rows, 1):
+        row["rank"] = rank
     return rows
 
 
@@ -131,7 +148,76 @@ def _service_summary(a: Analysis, dataset_dir: Path) -> list[dict]:
     return rows
 
 
-def _decide_with_llm(a: Analysis, candidates: list[dict], service_rows: list[dict]) -> tuple[list[dict], dict, dict]:
+def _trace_summary(a: Analysis, dataset_dir: Path, candidates: list[dict]) -> list[dict]:
+    path = dataset_dir / "telemetry" / a.lo.strftime("%Y_%m_%d") / "trace" / "trace_span.csv"
+    if not path.exists():
+        return []
+
+    candidate_components = {row["component"] for row in candidates}
+    if not candidate_components:
+        return []
+
+    lo_ms, hi_ms = int(a.lo.timestamp() * 1000), int(a.hi.timestamp() * 1000)
+    stats = defaultdict(lambda: {"in": [], "out": [], "errors": 0, "first_error_ms": None})
+    usecols = ["timestamp", "cmdb_id", "duration", "status_code", "operation_name"]
+
+    try:
+        chunks = pd.read_csv(path, usecols=usecols, chunksize=250_000)
+        for chunk in chunks:
+            chunk = chunk[chunk.cmdb_id.isin(candidate_components)]
+            if chunk.empty:
+                continue
+            chunk["timestamp"] = pd.to_numeric(chunk["timestamp"], errors="coerce")
+            chunk["duration"] = pd.to_numeric(chunk["duration"], errors="coerce")
+            chunk = chunk.dropna(subset=["timestamp", "duration"])
+            in_window = chunk[(chunk.timestamp >= lo_ms) & (chunk.timestamp < hi_ms)]
+            out_window = chunk[(chunk.timestamp < lo_ms) | (chunk.timestamp >= hi_ms)]
+            for comp, values in in_window.groupby("cmdb_id").duration:
+                stats[comp]["in"].extend(values.tolist())
+            for comp, values in out_window.groupby("cmdb_id").duration:
+                stats[comp]["out"].extend(values.sample(min(len(values), 2000), random_state=1).tolist())
+            errors = in_window[in_window.status_code.astype(str).str.lower().ne("0")]
+            errors = errors[errors.status_code.astype(str).str.lower().ne("ok")]
+            for comp, group in errors.groupby("cmdb_id"):
+                stats[comp]["errors"] += len(group)
+                first = int(group.timestamp.min())
+                current = stats[comp]["first_error_ms"]
+                stats[comp]["first_error_ms"] = first if current is None else min(current, first)
+    except Exception:
+        return []
+
+    rows = []
+    for comp, s in stats.items():
+        if not s["in"]:
+            continue
+        in_series = pd.Series(s["in"])
+        out_series = pd.Series(s["out"]) if s["out"] else pd.Series(dtype=float)
+        p95 = float(in_series.quantile(0.95))
+        baseline = float(out_series.quantile(0.95)) if len(out_series) else None
+        ratio = round(p95 / baseline, 2) if baseline and baseline > 0 else None
+        first_error = None
+        if s["first_error_ms"] is not None:
+            first_error = pd.to_datetime(s["first_error_ms"], unit="ms").strftime("%Y-%m-%d %H:%M:%S")
+        rows.append({
+            "component": comp,
+            "span_count": len(s["in"]),
+            "p95_duration_window": round(p95, 1),
+            "p95_duration_baseline": round(baseline, 1) if baseline else None,
+            "p95_ratio": ratio,
+            "error_spans": s["errors"],
+            "first_error_time": first_error,
+        })
+
+    rows.sort(key=lambda row: (row["p95_ratio"] or 0, row["error_spans"], row["span_count"]), reverse=True)
+    return rows[:8]
+
+
+def _decide_with_llm(
+    a: Analysis,
+    candidates: list[dict],
+    service_rows: list[dict],
+    trace_rows: list[dict],
+) -> tuple[list[dict], dict, dict]:
     llm = LLM()
     legal = sorted(set(NODE_REASONS.values()) | set(POD_REASONS.values()))
     prompt = {
@@ -145,6 +231,7 @@ def _decide_with_llm(a: Analysis, candidates: list[dict], service_rows: list[dic
         "legal_reasons": legal,
         "candidate_components": candidates,
         "service_symptoms": service_rows,
+        "trace_symptoms": trace_rows,
         "instructions": [
             "Choose exactly failure_count answers.",
             "Pick components only from candidate_components.component.",
@@ -152,6 +239,8 @@ def _decide_with_llm(a: Analysis, candidates: list[dict], service_rows: list[dic
             "Prefer root causes over downstream symptoms.",
             "Do not choose a node only because aggregate TCP/network counters are huge; node network counters often reflect downstream traffic.",
             "When a pod/service candidate appears in both candidate_components and service_symptoms, consider it seriously even if its peak_z is lower than a node.",
+            "When a candidate also has trace_symptoms with high p95_ratio or errors, use that as causal evidence.",
+            "Treat candidate_components.reason_quality=fallback_reason as weak evidence; it means the top KPI did not map cleanly to the proposed reason.",
             "For service-level symptoms, prefer the matching pod candidate over unrelated noisy peers unless there is direct node resource evidence.",
             "Keep the JSON compact: no prose outside JSON and no long explanations.",
             "Reply with JSON only.",
@@ -192,6 +281,7 @@ def _evidence(
     answers: list[dict],
     candidates: list[dict],
     service_rows: list[dict],
+    trace_rows: list[dict],
     decision: dict,
     notes: list[str],
     usage: dict,
@@ -210,8 +300,9 @@ def _evidence(
     for row in candidates:
         kpis = ", ".join(f"{k['kpi']} z={k['z']}" for k in row["top_kpis"][:3])
         lines.append(
-            f"- `{row['component']}`: peak z={row['peak_z']}; "
-            f"heuristic reason `{row['heuristic_reason']}` at {row['heuristic_time']}; {kpis}"
+            f"- `{row['component']}`: evidence score={row['evidence_score']}, peak z={row['peak_z']}; "
+            f"heuristic reason `{row['heuristic_reason']}` ({row['reason_quality']}) "
+            f"at {row['heuristic_time']}; service_match={row['service_match']}; {kpis}"
         )
     if service_rows:
         lines += ["", "Service-level symptoms:"]
@@ -219,6 +310,14 @@ def _evidence(
             lines.append(
                 f"- `{row['service']}`: mrt {row['mrt_window']} vs baseline {row['mrt_base']} "
                 f"(ratio {row['latency_ratio']}), success {row['sr_window']} vs {row['sr_base']}"
+            )
+    if trace_rows:
+        lines += ["", "Trace symptoms:"]
+        for row in trace_rows[:8]:
+            lines.append(
+                f"- `{row['component']}`: {row['span_count']} spans, p95 duration "
+                f"{row['p95_duration_window']} vs baseline {row['p95_duration_baseline']} "
+                f"(ratio {row['p95_ratio']}), error spans {row['error_spans']}"
             )
 
     lines += ["", "## Ruled out", ""]
@@ -254,15 +353,18 @@ def solve(instruction: str, dataset_dir: Path, ctx: dict) -> Solution:
 
     service_rows = _service_summary(a, Path(dataset_dir))
     candidates = _candidate_rows(a, service_rows)
+    trace_rows = []
+    if os.environ.get("MANTIS_TRACE_SUMMARY") == "1":
+        trace_rows = _trace_summary(a, Path(dataset_dir), candidates)
     notes: list[str] = []
     decision: dict = {}
     usage: dict = {}
 
     try:
-        answers, decision, usage = _decide_with_llm(a, candidates, service_rows)
+        answers, decision, usage = _decide_with_llm(a, candidates, service_rows, trace_rows)
     except Exception as exc:
         notes.append(f"LLM decision failed or was unavailable: {type(exc).__name__}: {exc}")
         answers = [answer_for(a, c) for c in a.ranked.head(a.n).index]
 
-    evidence = _evidence(a, answers, candidates, service_rows, decision, notes, usage)
+    evidence = _evidence(a, answers, candidates, service_rows, trace_rows, decision, notes, usage)
     return Solution(prediction=format_prediction(answers), evidence=evidence, usage=usage)
