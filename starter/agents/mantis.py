@@ -32,6 +32,8 @@ KPIS_EACH = 4
 
 
 def _model(tier: list[str]) -> list[str]:
+    if os.environ.get("MANTIS_MODELS"):
+        return [m.strip() for m in os.environ["MANTIS_MODELS"].split(",") if m.strip()]
     return [os.environ["RCA_MODEL"]] if os.environ.get("RCA_MODEL") else tier
 
 
@@ -148,6 +150,10 @@ def _decide_with_llm(a: Analysis, candidates: list[dict], service_rows: list[dic
             "Pick components only from candidate_components.component.",
             "Pick reasons exactly from legal_reasons.",
             "Prefer root causes over downstream symptoms.",
+            "Do not choose a node only because aggregate TCP/network counters are huge; node network counters often reflect downstream traffic.",
+            "When a pod/service candidate appears in both candidate_components and service_symptoms, consider it seriously even if its peak_z is lower than a node.",
+            "For service-level symptoms, prefer the matching pod candidate over unrelated noisy peers unless there is direct node resource evidence.",
+            "Keep the JSON compact: no prose outside JSON and no long explanations.",
             "Reply with JSON only.",
         ],
         "response_schema": {
@@ -157,7 +163,7 @@ def _decide_with_llm(a: Analysis, candidates: list[dict], service_rows: list[dic
             "ruled_out": [{"component": "...", "why": "..."}],
         },
     }
-    text = llm.ask(_model(STRONG), json.dumps(prompt, indent=2))
+    text = llm.ask(_model(STRONG), json.dumps(prompt, indent=2), max_tokens=500)
     decision = _json(text)
     answers = _validated_answers(a, decision.get("answers") or [])
     return answers, decision, llm.usage
