@@ -77,6 +77,17 @@ def _models(tier: list[str]) -> list[str]:
     return [os.environ["RCA_MODEL"]] if os.environ.get("RCA_MODEL") else tier
 
 
+def _llm_tier(n: int, cands: list[Candidate]) -> tuple[list[str], str]:
+    if os.environ.get("RCA_MODEL"):
+        return _models(STRONG), "single-model override"
+    if n > 1 or len(cands) < 2:
+        return STRONG, "strong: multi-failure or sparse candidate set"
+    top, second = cands[0].score, max(cands[1].score, 1.0)
+    if top >= 150 and top / second >= 2.5:
+        return CHEAP + STRONG, "routed cheap-first: one dominant candidate"
+    return STRONG, "strong: ambiguous candidate ranking"
+
+
 def parse_window(instruction: str) -> tuple[datetime, datetime] | None:
     m = re.search(
         r"(\w+)\s+(\d{1,2}),?\s+(\d{4}).{0,60}?(\d{1,2}):(\d{2})"
@@ -312,6 +323,7 @@ def llm_refine(instruction: str, lo: datetime, hi: datetime, n: int, cands: list
     if not os.environ.get("FEATHERLESS_API_KEY"):
         return cands[:n], {}, {}
     llm = LLM()
+    models, routing_note = _llm_tier(n, cands)
     brief = []
     for i, c in enumerate(cands[:14], 1):
         brief.append(
@@ -321,17 +333,21 @@ def llm_refine(instruction: str, lo: datetime, hi: datetime, n: int, cands: list
     prompt = (
         f"Pick the {n} most likely root-cause failure(s) for this OpenRCA microservice incident. "
         f"Window: {lo:%Y-%m-%d %H:%M:%S} to {hi:%Y-%m-%d %H:%M:%S} UTC+8 timestamps as written. "
-        "Prefer causes that move first. Network faults may only be visible in traces. "
-        "Use only listed components and exactly one legal reason.\n\n"
+        "Prefer causes that move first and explain downstream symptoms. Network faults may only be visible in traces. "
+        "Use only listed components and exactly one legal reason. "
+        "Node components may only use node reasons; non-node components may only use container reasons. "
+        "A very large node TCP/network metric is often traffic from affected services, not a legal node root-cause reason. "
+        "Do not invent components, times, reasons, telemetry, or confidence.\n\n"
         f"Question:\n{instruction}\n\nLegal reasons:\n{json.dumps(REASONS)}\n\nCandidates:\n" + "\n".join(brief) +
         '\n\nReply JSON only: {"answers":[{"component":"...","reason":"..."}],'
-        '"confidence":"low|medium|high","why":"short explanation"}'
+        '"confidence":"low|medium|high","why":"short explanation","ruled_out":[{"component":"...","why":"..."}]}'
     )
     try:
-        raw = llm.ask(_models(STRONG), prompt, max_tokens=700)
+        raw = llm.ask(models, prompt, max_tokens=700)
         data = _extract_json(raw)
     except Exception as e:
         return cands[:n], {"confidence": "low", "why": f"LLM refinement failed: {type(e).__name__}: {e}"}, llm.usage
+    data["routing"] = routing_note
     by_component = {c.component: c for c in cands}
     picked = []
     for item in data.get("answers", []):
@@ -386,6 +402,7 @@ def evidence(instruction: str, lo: datetime, hi: datetime, answers: list[Candida
         "",
         f"- Parsed the instruction window as `{lo:%Y-%m-%d %H:%M:%S}` to `{hi:%Y-%m-%d %H:%M:%S}` using the dataset's UTC+8 answer convention and preserved the requested failure count.",
         "- Metrics/log timestamps were treated as seconds; trace timestamps were treated as milliseconds.",
+        f"- Model routing: {llm_note.get('routing', 'no Featherless call; deterministic candidate ranking only')}.",
         "- Predictions always include a best guess; doubts stay in this evidence file.",
     ]
     return "\n".join(lines) + "\n"
