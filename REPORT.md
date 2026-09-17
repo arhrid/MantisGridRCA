@@ -36,6 +36,14 @@ For each run:
 - `make cost OUT=...`
 - `python scripts/compare_runs.py --queries <dataset>/dev/query_dev.csv --out out/routed out/single-glm52 --report out/comparison.md`
 
+Submission readiness:
+
+- The only Dockerfile in the repository is the root `Dockerfile`.
+- `run.py` keeps the required command-line shape: `python run.py --dataset /data --queries /data/query.csv --out /out`.
+- The default agent is `agents.telemetry_routed`, so the judge command does not need an extra `--agent`.
+- The agent reads the model key from `FEATHERLESS_API_KEY` and the endpoint from `FEATHERLESS_BASE_URL` when set.
+- `scripts/validate_submission.py` checks prediction count, JSON shape, key order, and the four required evidence sections.
+
 Local status on 2026-09-17:
 
 - Root command smoke-tested against a synthetic one-row no-telemetry dataset.
@@ -56,4 +64,9 @@ Next highest-value work once the dataset is mounted:
 
 ## AI Use
 
-Codex was used to generate the repository structure, submission entry point, telemetry agent, Dockerfile, validation helper, and draft report/README text. The team should add the exact models, assistants, prompts, and manual changes used during final development before submission.
+AI systems used during development:
+
+- OpenAI Codex coding agent generated and edited the submission entry point, Docker packaging, telemetry RCA agent, Featherless client, validation/comparison harnesses, and documentation drafts under human direction.
+- Featherless-hosted GLM family models are used by the submitted agent at runtime when `FEATHERLESS_API_KEY` is available. The default routed policy uses GLM Flash models for dominant one-candidate cases and stronger GLM models for ambiguous or multi-failure cases. `RCA_MODEL=<model>` pins the agent to one GLM model for ablation.
+
+The team wrote the project goals, reviewed generated changes, supplied credentials locally, ran evaluations, and owns final submission decisions. No API keys or secrets are committed.

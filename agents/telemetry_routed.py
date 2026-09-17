@@ -398,8 +398,7 @@ def evidence(instruction: str, lo: datetime, hi: datetime, answers: list[Candida
             lines.append(f"- `{c.component}`: candidate evidence was weaker or later ({c.source}, score {c.score:.1f}, guessed reason `{c.reason}`).")
     lines += [
         "",
-        "## Method",
-        "",
+        "Evidence method:",
         f"- Parsed the instruction window as `{lo:%Y-%m-%d %H:%M:%S}` to `{hi:%Y-%m-%d %H:%M:%S}` using the dataset's UTC+8 answer convention and preserved the requested failure count.",
         "- Metrics/log timestamps were treated as seconds; trace timestamps were treated as milliseconds.",
         f"- Model routing: {llm_note.get('routing', 'no Featherless call; deterministic candidate ranking only')}.",
@@ -413,7 +412,24 @@ def solve(instruction: str, dataset_dir: Path, ctx: dict) -> Solution:
     n = failure_count(instruction)
     if not win:
         answers = [{"datetime": "2022-03-20 00:00:00", "component": "frontend-0", "reason": "container CPU load"} for _ in range(n)]
-        return Solution(format_prediction(answers), "## Answer\n\nCould not parse the incident window; emitted a fallback guess.\n")
+        fallback_evidence = [
+            "## Answer",
+            "",
+            *[f"{i}. frontend-0 / container CPU load / 2022-03-20 00:00:00" for i in range(1, n + 1)],
+            "",
+            "## Confidence",
+            "",
+            "Low. Could not parse the incident window, so this is a deterministic fallback guess.",
+            "",
+            "## Evidence",
+            "",
+            "No telemetry was read because the instruction window could not be parsed.",
+            "",
+            "## Ruled out",
+            "",
+            "No alternatives were ruled out.",
+        ]
+        return Solution(format_prediction(answers), "\n".join(fallback_evidence) + "\n")
     lo, hi = win
     cands = merge_candidates(
         metric_candidates(dataset_dir, lo, hi)

@@ -12,6 +12,8 @@ DEFAULT_BASE_URL = "https://api.featherless.ai/v1"
 RETRIES = 2
 BACKOFF = 1.0
 BREAKER = 2
+REQUEST_TIMEOUT_S = 20.0
+CALL_WALL_LIMIT_S = 50.0
 
 
 class ModelUnavailable(RuntimeError):
@@ -24,6 +26,8 @@ class LLM:
         retries: int = RETRIES,
         backoff: float = BACKOFF,
         breaker: int = BREAKER,
+        request_timeout_s: float = REQUEST_TIMEOUT_S,
+        call_wall_limit_s: float = CALL_WALL_LIMIT_S,
     ) -> None:
         key = os.environ.get("FEATHERLESS_API_KEY")
         if not key:
@@ -31,11 +35,13 @@ class LLM:
         self.client = OpenAI(
             base_url=os.environ.get("FEATHERLESS_BASE_URL", DEFAULT_BASE_URL),
             api_key=key,
+            timeout=float(os.environ.get("FEATHERLESS_TIMEOUT_S", request_timeout_s)),
         )
         self.usage = defaultdict(lambda: {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0})
         self.retries = retries
         self.backoff = backoff
         self.breaker = breaker
+        self.call_wall_limit_s = float(os.environ.get("RCA_LLM_CALL_WALL_S", call_wall_limit_s))
         self.dead: set[str] = set()
         self.failures: dict[str, int] = defaultdict(int)
 
@@ -49,10 +55,15 @@ class LLM:
         model_list = [models] if isinstance(models, str) else list(models)
         messages = [{"role": "user", "content": prompt}] if isinstance(prompt, str) else prompt
         last_error: Exception | None = None
+        deadline = time.monotonic() + self.call_wall_limit_s
         for model in model_list:
+            if time.monotonic() >= deadline:
+                break
             if model in self.dead:
                 continue
             for attempt in range(self.retries + 1):
+                if time.monotonic() >= deadline:
+                    break
                 try:
                     resp = self.client.chat.completions.create(
                         model=model,
@@ -82,7 +93,7 @@ class LLM:
                     self._failed(model)
                     if model in self.dead or attempt >= self.retries:
                         break
-                    time.sleep(self.backoff * (2 ** attempt))
+                    time.sleep(min(self.backoff * (2 ** attempt), max(0.0, deadline - time.monotonic())))
                 except Exception as e:
                     last_error = e
                     self._failed(model)

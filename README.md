@@ -106,7 +106,7 @@ Do not commit the Featherless API key. Export it only in your shell.
 
 ## Judge Command
 
-The root `Dockerfile` supports the required command shape:
+The repository intentionally has one Dockerfile, at the root. It supports the required command shape:
 
 ```bash
 docker build -t your-team .
@@ -127,7 +127,12 @@ Model calls receive only compact candidate summaries. The Featherless client ret
 
 ## AI Tool Disclosure
 
-Codex was used to generate the submission structure, Dockerfile, `run.py`, telemetry agent, validation helper, and draft documentation. The team should update this section before submission with every AI model, coding assistant, and agent framework used during final development, plus what was AI-generated versus manually written.
+AI systems used during development:
+
+- OpenAI Codex coding agent: generated and edited the submission entry point, Docker packaging, telemetry RCA agent, Featherless client, validation/comparison harnesses, and documentation drafts under human direction.
+- Featherless-hosted GLM family models: used by the submitted agent at runtime when `FEATHERLESS_API_KEY` is available. The default routed policy uses GLM Flash models for dominant one-candidate cases and stronger GLM models for ambiguous or multi-failure cases. `RCA_MODEL=<model>` pins the agent to one GLM model for ablation.
+
+The team wrote the project goals, reviewed generated changes, supplied credentials locally, ran evaluations, and owns final submission decisions. No API keys or secrets are committed.
 
 ## Docs
 
