@@ -12,10 +12,11 @@ Status: planning.
 
 Workspace update:
 
-- Track 1 repo is cloned at `/Users/benchong/Work/Hackathon/MantisGridRCA`.
+- Track 1 repo is cloned at `/Users/arhrid/antima-workspace/mantisgridinfra/mgrca/MantisGridRCA`.
 - Remote: `https://github.com/arhrid/MantisGridRCA`.
 - Repo currently contains planning docs only; no implementation has started yet.
 - Runtime decision: run locally with a Python environment, not Docker, unless later hackathon instructions require packaging.
+- Track 1 slide details have been captured in the POR: 12 GB telemetry, 70 labeled cases, starter pack, 7 GLM models via Featherless, and an emphasis on routing plus explainability.
 
 Current docs:
 
@@ -65,10 +66,12 @@ Deliverables:
 Acceptance criteria:
 
 - Humans have provided latest event instructions or confirmed there are none.
-- We know how data will be accessed.
+- We know how the 12 GB telemetry and 70 labeled cases will be accessed.
+- We know where to obtain the starter pack.
 - We know whether direct API access is possible.
 - We know whether MCP is required.
-- We know whether external LLM APIs are allowed.
+- We know how to use the provided Featherless key and 7 GLM models.
+- We know whether other external LLM APIs are allowed.
 - We know whether judging criteria or deliverables changed.
 
 Validation:
@@ -128,6 +131,7 @@ Deliverables:
 - Incident loader.
 - Typed data objects or schemas for incidents.
 - Optional local cache setup.
+- Access path for the starter pack if provided separately.
 
 Acceptance criteria:
 

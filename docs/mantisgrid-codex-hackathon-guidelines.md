@@ -11,7 +11,6 @@ The goal is to keep Codex focused, incremental, testable, and aligned with the c
 Before starting implementation work, Codex should read:
 
 - `mantisgrid-track1-rca-por.md`
-- `mantisgrid-track2-cluster-efficiency-por.md`
 - `mantisgrid-hackathon-implementation-plan.md`
 
 The POR docs describe what we are building and why. The implementation plan describes the current phase, status, and next checkpoint.
