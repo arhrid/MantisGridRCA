@@ -16,7 +16,7 @@ Workspace update:
 - Remote: `https://github.com/arhrid/MantisGridRCA`.
 - Repo currently contains planning docs only; no implementation has started yet.
 - Runtime decision: run locally with a Python environment, not Docker, unless later hackathon instructions require packaging.
-- Latest Track 1 event details are captured from `docs/IMG_7071.JPG`: 12 GB telemetry, 70 answered cases, starter pack that runs end to end, 7 GLM models through Featherless, and judging emphasis on routing and explainability.
+- Latest Track 1 event details are captured from `docs/Track1.JPG`: 12 GB telemetry, 70 answered cases, starter pack that runs end to end, 7 GLM models through Featherless, and judging emphasis on routing and explainability.
 
 Current docs:
 
