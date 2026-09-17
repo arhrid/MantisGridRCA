@@ -118,6 +118,12 @@ docker run --rm \
   python run.py --dataset /data --queries /data/query.csv --out /out
 ```
 
+## Submission Repository
+
+Judges should evaluate the public repository's default branch at the latest pushed commit when cloned. The work intended for judging is merged to `main`.
+
+Secrets are not committed. API keys are supplied only through environment variables such as `FEATHERLESS_API_KEY`; local files such as `.env`, `.env.local`, and `.env.local.save` are ignored by Git.
+
 ## Agent
 
 Default agent: `agents.telemetry_routed`.
@@ -129,10 +135,32 @@ Model calls receive only compact candidate summaries. The Featherless client ret
 
 AI systems used during development:
 
-- OpenAI Codex coding agent: generated and edited the submission entry point, Docker packaging, telemetry RCA agent, Featherless client, validation/comparison harnesses, and documentation drafts under human direction.
-- Featherless-hosted GLM family models: used by the submitted agent at runtime when `FEATHERLESS_API_KEY` is available. The default routed policy uses GLM Flash models for dominant one-candidate cases and stronger GLM models for ambiguous or multi-failure cases. `RCA_MODEL=<model>` pins the agent to one GLM model for ablation.
+- OpenAI Codex coding agent: generated and edited code, scripts, and documentation under human direction.
+- Featherless-hosted GLM family models: used by the submitted RCA agent at runtime when `FEATHERLESS_API_KEY` is available.
+- GLM Flash models: used by the default routed policy for low-ambiguity, dominant-candidate cases.
+- Stronger GLM models, currently `zai-org/GLM-5.2` and `zai-org/GLM-5.1`: used by the default routed policy for ambiguous or multi-failure cases. `RCA_MODEL=<model>` pins every model call to one GLM model for single-model comparison.
 
-The team wrote the project goals, reviewed generated changes, supplied credentials locally, ran evaluations, and owns final submission decisions. No API keys or secrets are committed.
+Agent frameworks and orchestration:
+
+- No external agent framework is used.
+- The agent is a local Python orchestration module, `agents.telemetry_routed`, called by `run.py`.
+- The model client uses the OpenAI-compatible Python SDK against `FEATHERLESS_BASE_URL`, defaulting to `https://api.featherless.ai/v1`.
+
+AI-generated or AI-assisted work:
+
+- Root submission shape: `Dockerfile`, `run.py`, and command-line wiring.
+- RCA logic in `agents.telemetry_routed`: telemetry loading, candidate generation, model routing, fallback behavior, and evidence formatting.
+- Featherless/OpenAI-compatible client in `llm.py`.
+- Local validation, scoring, cost, and comparison scripts.
+- README, REPORT, and evaluation documentation drafts.
+
+Team-authored and team-owned work:
+
+- Project goals, track selection, and final implementation direction.
+- Local credentials and API-key handling.
+- Review and acceptance of generated changes.
+- Evaluation runs and interpretation of results.
+- Final repository contents and submission decisions.
 
 ## Docs
 
