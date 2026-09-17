@@ -6,7 +6,17 @@ Barebones project repository for the MantisGrid Hackathon Track 1: Infrastructur
 
 Build an accurate and efficient RCA system that investigates cluster incidents using telemetry evidence and produces a root-cause hypothesis with supporting evidence.
 
-The project is currently in planning mode. The challenge slide describes the dataset and model pool, but the dataset, starter pack, credentials, API details, and final access instructions are not present in this checkout yet.
+The official hackathon repo is cloned separately at:
+
+```text
+/Users/benchong/Work/Hackathon/hackathon-2026-official
+```
+
+Track 1 source materials, starter code, and local data live under:
+
+```text
+/Users/benchong/Work/Hackathon/hackathon-2026-official/track-1
+```
 
 ## Expected Inputs
 
@@ -23,14 +33,15 @@ The project is currently in planning mode. The challenge slide describes the dat
 
 - Python RCA backend and workflow orchestrator
 - Query-based telemetry access; raw telemetry should not be pasted into model context
-- Direct MantisGrid API client or MCP adapter, depending on final instructions
+- File-backed telemetry access over the official Track 1 bundle
 - Provider-independent LLM interface
 - Routed model selection plus a single-model baseline
 - Constrained telemetry tools owned by the backend
 - Structured investigation traces
 - Evaluation harness for labeled incidents
-- Streamlit UI for local review and demos
-- Local Python runtime, with Docker packaging only if final instructions require it
+- Optional local review/demo tooling
+- Local Python runtime for development
+- Root-level Docker submission path for judging
 
 ## Initial RCA Flow
 
@@ -46,17 +57,60 @@ The project is currently in planning mode. The challenge slide describes the dat
 
 - Repository initialized
 - Planning documents are in `docs/`
-- Dataset, starter pack, credentials, and API access are pending in this checkout
-- Implementation has not started
+- Local run helper is available at `scripts/run_official_local.sh`
+- The official starter/data are referenced from the separate official checkout
+- Implementation of the real agent has not started
+
+## Local Run
+
+From this repo:
+
+```bash
+cd /Users/benchong/Work/Hackathon/MantisGridRCA
+```
+
+Run 2 cases with the free heuristic baseline:
+
+```bash
+LIMIT=2 scripts/run_official_local.sh
+```
+
+Run 2 cases with the routed GLM starter:
+
+```bash
+export FEATHERLESS_API_KEY='your-key-here'
+LIMIT=2 AGENT=agents.routed scripts/run_official_local.sh
+```
+
+Run all 70 dev cases:
+
+```bash
+scripts/run_official_local.sh
+```
+
+Useful options:
+
+```bash
+LIMIT=10 AGENT=agents.heuristic scripts/run_official_local.sh
+LIMIT=10 AGENT=agents.routed scripts/run_official_local.sh
+OUT=/tmp/rca-out LIMIT=2 scripts/run_official_local.sh
+```
+
+By default, outputs go to:
+
+```text
+/Users/benchong/Work/Hackathon/hackathon-2026-official/track-1/out/local-dev/
+```
+
+Do not commit the Featherless API key. Export it only in your shell.
 
 ## Next Steps
 
-1. Confirm final hackathon instructions, dataset format, starter pack, API/MCP access, Featherless credentials, and judging criteria.
-2. Add a minimal local Python project skeleton.
-3. Implement an incident loader and data access stub.
-4. Add canonical RCA state and trace logging.
-5. Add routed-vs-single-model benchmark plumbing.
-6. Build a first end-to-end RCA workflow over one sample incident once data is available.
+1. Keep the official `run.py` contract intact.
+2. Build one simple real agent module to replace the starter heuristic.
+3. Add telemetry summarization over metrics, traces, and targeted logs.
+4. Compare routed GLM use against a single-model baseline.
+5. Improve evidence quality and uncertainty reporting.
 
 ## Docs
 
