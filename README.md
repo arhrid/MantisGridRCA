@@ -8,6 +8,20 @@ The project runs headless over the `Market-cloudbed-1` bundle and writes:
 - `evidence/<row_id>.md`
 - `usage.jsonl`
 
+## Official Sources
+
+The official hackathon repo may be cloned separately at:
+
+```text
+/Users/benchong/Work/Hackathon/hackathon-2026-official
+```
+
+Track 1 source materials, starter code, and local data live under:
+
+```text
+/Users/benchong/Work/Hackathon/hackathon-2026-official/track-1
+```
+
 ## Run
 
 Install dependencies:
@@ -39,6 +53,50 @@ RCA_MODEL=zai-org/GLM-5.2 make dev DATASET=data/Market-cloudbed-1 OUT=out/single
 ```
 
 The agent reads `FEATHERLESS_BASE_URL` when set and otherwise uses `https://api.featherless.ai/v1`. No key or endpoint is hard-coded.
+
+## Official Starter Local Run
+
+From this repo:
+
+```bash
+cd /Users/benchong/Work/Hackathon/MantisGridRCA
+```
+
+Run 2 cases with the free heuristic baseline:
+
+```bash
+LIMIT=2 scripts/run_official_local.sh
+```
+
+Run 2 cases with the routed GLM starter:
+
+```bash
+export FEATHERLESS_API_KEY='your-key-here'
+LIMIT=2 AGENT=agents.routed scripts/run_official_local.sh
+```
+
+Run all 70 dev cases:
+
+```bash
+scripts/run_official_local.sh
+```
+
+Useful options:
+
+```bash
+OFFICIAL_TRACK1_DIR=/path/to/hackathon-2026-official/track-1 LIMIT=2 scripts/run_official_local.sh
+LIMIT=10 AGENT=agents.heuristic scripts/run_official_local.sh
+LIMIT=10 AGENT=agents.routed scripts/run_official_local.sh
+OUT=/tmp/rca-out LIMIT=2 scripts/run_official_local.sh
+```
+
+By default, outputs go to:
+
+```text
+/Users/benchong/Work/Hackathon/hackathon-2026-official/track-1/out/local-dev/
+```
+
+Do not commit the Featherless API key. Export it only in your shell.
 
 ## Judge Command
 

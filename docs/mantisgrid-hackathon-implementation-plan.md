@@ -15,8 +15,9 @@ Workspace update:
 - Track 1 repo is cloned at `/Users/arhrid/antima-workspace/mantisgridinfra/mgrca/MantisGridRCA`.
 - Remote: `https://github.com/arhrid/MantisGridRCA`.
 - Repo now contains a Track 1 judge-shaped Python submission: root `Dockerfile`, `run.py`, `agents.telemetry_routed`, cost/score helpers, validation helper, `REPORT.md`, and eval notes.
-- Runtime decision updated by official Track 1 submission docs: keep local Python support, but ship Docker packaging at the repository root because judging builds and runs that image.
-- Latest Track 1 event details are captured from `docs/Track1.JPG`: 12 GB telemetry, 70 answered cases, starter pack that runs end to end, 7 GLM models through Featherless, and judging emphasis on routing and explainability.
+- Runtime decision: keep local Python support, but ship Docker packaging at the repository root because judging builds and runs that image.
+- Latest Track 1 event details are captured from `docs/RCAAdditionalInfo.JPG`: 12 GB telemetry, 70 answered cases, starter pack that runs end to end, 7 GLM models through Featherless, and judging emphasis on routing and explainability.
+- Official repo cloned at `/Users/benchong/Work/Hackathon/hackathon-2026-official`; Track 1 source of truth is `track-1/`.
 
 Current docs and submission files:
 
@@ -43,6 +44,16 @@ At the start of the hackathon, Codex should ask the humans for the latest event 
 - Do not commit or push unless explicitly asked.
 - At phase boundaries, provide validation results, known risks, and suggested commit message.
 
+## Team Coordination
+
+- Four people are working across the hackathon: two on Track 1 and two on Track 2.
+- Track 1 work should assume one additional human collaborator may be editing the repo at the same time.
+- Before any commit or push, check `git status`, fetch the latest remote state, and integrate remote work with a normal pull/rebase.
+- Do not force-push or rewrite shared history unless the whole team explicitly agrees.
+- Keep commits small and track-scoped so parallel work is easy to review and merge.
+- Avoid touching files outside the current phase unless needed for the task, especially shared docs and submission files.
+- When a push is rejected, stop and inspect the remote changes before retrying.
+
 ## Phase Status Legend
 
 - `not_started`
@@ -65,7 +76,8 @@ Deliverables:
 
 - Captured start-of-hackathon update notes.
 - Inventory of available datasets, APIs, docs, and sample eval data.
-- Located starter pack and verified local end-to-end run command.
+- Located official starter pack and verified local end-to-end run command.
+- Confirmed official Docker submission contract and root-level Dockerfile requirement.
 - Featherless/GLM model access notes, without recording secrets.
 - Confirmed local setup requirements.
 - List of assumptions that changed from the POR docs.
@@ -81,6 +93,7 @@ Acceptance criteria:
 - We know how to use the provided Featherless key and 7 GLM models.
 - We know whether external LLM APIs are allowed.
 - We know how to access the provided GLM models and how to compare routed versus one-model baselines.
+- We know the exact required output files: `predictions.csv`, `evidence/<row_id>.md`, and `usage.jsonl`.
 - We know whether judging criteria or deliverables changed.
 
 Validation:
@@ -99,7 +112,7 @@ Status: `not_started`
 
 Objective:
 
-Create a reproducible local Python project skeleton with dependencies, config handling, and a simple smoke test. Do not start with Docker unless later hackathon instructions require it.
+Create a reproducible Python project skeleton based on the official starter pack, with local development support and the required root-level Docker submission path.
 
 Deliverables:
 
@@ -107,18 +120,22 @@ Deliverables:
 - Dependency file
 - Config directory
 - Simple smoke test
-- Optional Docker packaging note only if required later
+- Root-level Dockerfile
+- Official `run.py` CLI contract
 
 Acceptance criteria:
 
 - Local environment installs successfully.
 - Basic command runs on the host.
-- Project has clear entry points for Track 1 and/or Track 2.
+- Docker image builds and runs against the official validation command.
+- Project has clear Track 1 entry points.
 
 Validation:
 
 - Install local dependencies.
 - Run smoke command.
+- Run official validation.
+- Run Docker validation.
 
 Suggested commit message:
 
