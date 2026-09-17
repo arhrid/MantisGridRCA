@@ -377,11 +377,18 @@ Track every scoring/cost tweak here so we do not re-test the same idea without a
 - Keep: pending LLM-backed `LIMIT=10` validation.
 - Notes: this is generic candidate coverage logic; it does not key off row ids, expected answers, or scenario labels.
 
+### Tweak 11: Dataset timezone fix
+
+- Change: parse instruction windows as UTC+8, matching the dataset/scoring convention, and format occurrence times back in UTC+8.
+- Result: rows after 16:00 local time no longer fail with `No samples inside the window`; row 12 smoke test now produces a real prediction.
+- Keep: yes.
+- Notes: this changes all time windows, so rerun rows 1-10 and rows 11-20 before comparing further prompt/model tweaks.
+
 ### Current Read
 
 - `mantis-reason-10` on rows 1-10 scored `0.200`, `1 / 10` fully solved, `234.6s` total runtime, `67,169` prompt tokens, and `5,000` completion tokens.
-- Failure classes: `candidate_missing: 4`, `candidate_present_model_wrong: 2`, `time_wrong: 2`, `reason_wrong: 1`, `perfect: 1`.
-- Current conclusion: model choice and prompt wording are not the main bottleneck. Candidate coverage is now the largest problem.
+- `mantis-backfill-10` on rows 1-10 also scored `0.200`, but moved `candidate_missing` from `4` to `0`, so true components are now visible and the remaining issue is mostly choice/ranking.
+- The rows 11-20 holdout initially scored `0.000`, but rows 12-19 were invalid because the parser treated UTC+8 instruction times as UTC. Do not use that holdout score for model-quality conclusions.
 
 Next execution target:
 
