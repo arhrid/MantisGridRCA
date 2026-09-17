@@ -369,6 +369,14 @@ Track every scoring/cost tweak here so we do not re-test the same idea without a
 - Keep: yes.
 - Notes: use `START_ROW=10 LIMIT=10` for rows 11-20 after a candidate-generation tweak.
 
+### Tweak 10: Legal-signal candidate backfill
+
+- Change: expanded `agents.mantis` candidate generation with a backfill pass over components that have strong KPI evidence for a legal reason class.
+- Change: added node-specific shorthand mappings for `system.mem.*` and `system.io.*` metrics so node memory/disk candidates are not hidden by noisy pod/network symptoms.
+- Result: local no-LLM smoke checks now put previously missing `node-1` in row 3 evidence and `node-2` in row 8 evidence.
+- Keep: pending LLM-backed `LIMIT=10` validation.
+- Notes: this is generic candidate coverage logic; it does not key off row ids, expected answers, or scenario labels.
+
 ### Current Read
 
 - `mantis-reason-10` on rows 1-10 scored `0.200`, `1 / 10` fully solved, `234.6s` total runtime, `67,169` prompt tokens, and `5,000` completion tokens.
@@ -377,10 +385,9 @@ Track every scoring/cost tweak here so we do not re-test the same idea without a
 
 Next execution target:
 
-1. Improve candidate generation so expected components appear in the evidence packet more often.
-2. Keep the change generic: expand candidates through service, trace, and timing relationships rather than scenario-specific answer matching.
-3. Rerun rows 1-10 to check whether `candidate_missing` drops.
-4. Then run rows 11-20 as a holdout slice so we do not overfit the first 10 rows.
+1. Rerun rows 1-10 to check whether `candidate_missing` drops after the legal-signal backfill.
+2. Then run rows 11-20 as a holdout slice so we do not overfit the first 10 rows.
+3. If candidate coverage improves but score does not, inspect whether the failure moved to `candidate_present_model_wrong`, `reason_wrong`, or `time_wrong`.
 
 Current reason-evidence slice:
 

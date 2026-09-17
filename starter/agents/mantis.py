@@ -32,6 +32,7 @@ STRONG = ["zai-org/GLM-5.2", "zai-org/GLM-5.1"]
 CANDIDATES = 12
 KPIS_EACH = 4
 REASON_EVIDENCE_EACH = 6
+LEGAL_BACKFILL = 10
 
 
 def _model(tier: list[str]) -> list[str]:
@@ -62,6 +63,16 @@ def _reason_hint(kpi: str, component: str) -> tuple[str | None, str]:
     if reason:
         return reason, "direct"
     lowered = kpi.lower()
+    if component.startswith("node-") and ("system.mem" in lowered or ".mem." in lowered):
+        return "node memory consumption", "direct"
+    if component.startswith("node-") and any(
+        part in lowered for part in ("system.io.r_", "system.io.read", "disk_read")
+    ):
+        return "node disk read I/O consumption", "direct"
+    if component.startswith("node-") and any(
+        part in lowered for part in ("system.io.w_", "system.io.write", "disk_write")
+    ):
+        return "node disk write I/O consumption", "direct"
     if not component.startswith("node-") and any(
         part in lowered for part in ("fs_usage", "filesystem", "disk_usage")
     ):
@@ -143,7 +154,43 @@ def _candidate_rows(a: Analysis, service_rows: list[dict]) -> list[dict]:
         if len(components) >= CANDIDATES:
             break
 
-    for rank, component in enumerate(components[:CANDIDATES], 1):
+    legal_rows = []
+    for row in a.j.itertuples(index=False):
+        reason, hint = _reason_hint(str(row.kpi_name), str(row.component))
+        if not reason:
+            continue
+        legal_rows.append({
+            "component": str(row.component),
+            "reason": reason,
+            "hint": hint,
+            "z": float(row.z),
+        })
+    legal_scores: dict[str, float] = {}
+    for row in legal_rows:
+        multiplier = 0.5 if row["hint"] == "inferred_storage" else 1.0
+        legal_scores[row["component"]] = max(
+            legal_scores.get(row["component"], 0.0),
+            row["z"] * multiplier,
+        )
+    for component, _ in sorted(legal_scores.items(), key=lambda item: item[1], reverse=True):
+        if component not in components:
+            components.append(component)
+        if len(components) >= CANDIDATES + LEGAL_BACKFILL:
+            break
+    for component, _ in sorted(
+        ((component, score) for component, score in legal_scores.items() if component.startswith("node-")),
+        key=lambda item: item[1],
+        reverse=True,
+    ):
+        if component not in components:
+            components.append(component)
+
+    selected = components[:CANDIDATES + LEGAL_BACKFILL]
+    for component in components[CANDIDATES + LEGAL_BACKFILL:]:
+        if component.startswith("node-") and component not in selected:
+            selected.append(component)
+
+    for rank, component in enumerate(selected, 1):
         z = a.ranked[component]
         component_kpis = a.j[a.j.component == component]
         kpis = component_kpis.head(KPIS_EACH)
