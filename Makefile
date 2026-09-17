@@ -1,7 +1,7 @@
 PYTHON ?= python
 DATASET ?= data/Market-cloudbed-1
 OUT ?= out/dev
-AGENT ?= agents.telemetry_routed
+AGENT ?= starter.agents.mantis
 N ?= 2
 
 .PHONY: validate dev score cost docker clean

@@ -58,7 +58,7 @@ def main() -> None:
     p.add_argument("--dataset", required=True, help="bundle dir, containing telemetry/")
     p.add_argument("--queries", required=True, help="query.csv")
     p.add_argument("--out", required=True)
-    p.add_argument("--agent", default="agents.telemetry_routed")
+    p.add_argument("--agent", default="starter.agents.mantis")
     p.add_argument("--limit", type=int, default=0, help="first N cases only")
     p.add_argument("--resume", action="store_true")
     args = p.parse_args()
