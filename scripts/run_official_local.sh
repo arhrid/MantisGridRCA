@@ -22,5 +22,35 @@ if [[ "$LIMIT" != "0" ]]; then
   args+=(--limit "$LIMIT")
 fi
 
-exec "$PYTHON" "${args[@]}"
+"$PYTHON" "${args[@]}"
 
+PREDICTIONS="$OUT/predictions.csv" QUERIES="$QUERIES" "$PYTHON" - <<'PY'
+import csv
+import os
+import textwrap
+
+predictions = os.environ["PREDICTIONS"]
+queries = os.environ["QUERIES"]
+
+if not os.path.exists(predictions):
+    raise SystemExit(f"\nNo predictions found at {predictions}")
+
+with open(queries, newline="") as fh:
+    query_rows = {row["row_id"]: row for row in csv.DictReader(fh)}
+
+with open(predictions, newline="") as fh:
+    pred_rows = list(csv.DictReader(fh))
+
+has_scoring = any("scoring_points" in row for row in query_rows.values())
+
+print("\n=== Local run comparison ===")
+for row in pred_rows:
+    row_id = row["row_id"]
+    q = query_rows.get(row_id, {})
+    print(f"\nrow_id={row_id} task={q.get('task_index', row.get('task_index', ''))}")
+    print("prediction:")
+    print(textwrap.indent(row.get("prediction", "").strip(), "  "))
+    if has_scoring:
+        print("scoring_points:")
+        print(textwrap.indent(q.get("scoring_points", "").strip(), "  "))
+PY
