@@ -1,12 +1,16 @@
 # MantisGrid RCA
 
-Barebones project repository for the MantisGrid Hackathon Track 1: Infrastructure Root Cause Analysis.
+Track 1 submission for the MantisGrid Hackathon 2026: Infrastructure Root Cause Analysis.
 
-## Goal
+The project runs headless over the `Market-cloudbed-1` bundle and writes:
 
-Build an accurate and efficient RCA system that investigates cluster incidents using telemetry evidence and produces a root-cause hypothesis with supporting evidence.
+- `predictions.csv`
+- `evidence/<row_id>.md`
+- `usage.jsonl`
 
-The official hackathon repo is cloned separately at:
+## Official Sources
+
+The official hackathon repo may be cloned separately at:
 
 ```text
 /Users/benchong/Work/Hackathon/hackathon-2026-official
@@ -18,50 +22,39 @@ Track 1 source materials, starter code, and local data live under:
 /Users/benchong/Work/Hackathon/hackathon-2026-official/track-1
 ```
 
-## Expected Inputs
+## Run
 
-- Incident definitions
-- 70 labeled cases for evaluation
-- 12 GB of real telemetry
-- Metrics
-- Logs
-- Traces
-- Cluster, node, workload, service, pod, job, GPU, accelerator, or resource metadata where available
-- 7 GLM models on a provided Featherless key, subject to final credential details
+Install dependencies:
 
-## Planned Shape
+```bash
+pip install -r requirements.txt
+```
 
-- Python RCA backend and workflow orchestrator
-- Query-based telemetry access; raw telemetry should not be pasted into model context
-- File-backed telemetry access over the official Track 1 bundle
-- Provider-independent LLM interface
-- Routed model selection plus a single-model baseline
-- Constrained telemetry tools owned by the backend
-- Structured investigation traces
-- Evaluation harness for labeled incidents
-- Optional local review/demo tooling
-- Local Python runtime for development
-- Root-level Docker submission path for judging
+Run two dev cases:
 
-## Initial RCA Flow
+```bash
+make validate DATASET=data/Market-cloudbed-1
+```
 
-1. Load incident context.
-2. Identify affected entities and symptoms.
-3. Generate candidate root-cause hypotheses.
-4. Request bounded telemetry evidence through backend tools.
-5. Update hypotheses based on evidence.
-6. Produce a final RCA answer with time, component, cause, confidence, evidence, blast radius, and next action.
-7. Benchmark routed model use against a single-model baseline.
+Run the full dev split:
 
-## Current Status
+```bash
+make dev DATASET=data/Market-cloudbed-1 OUT=out/routed
+make score DATASET=data/Market-cloudbed-1 OUT=out/routed
+make cost OUT=out/routed
+```
 
-- Repository initialized
-- Planning documents are in `docs/`
-- Local run helper is available at `scripts/run_official_local.sh`
-- The official starter/data are referenced from the separate official checkout
-- Implementation of the real agent has not started
+Optional Featherless/GLM refinement:
 
-## Local Run
+```bash
+export FEATHERLESS_API_KEY=<your key>
+make dev DATASET=data/Market-cloudbed-1 OUT=out/routed
+RCA_MODEL=zai-org/GLM-5.2 make dev DATASET=data/Market-cloudbed-1 OUT=out/single-glm52
+```
+
+The agent reads `FEATHERLESS_BASE_URL` when set and otherwise uses `https://api.featherless.ai/v1`. No key or endpoint is hard-coded.
+
+## Official Starter Local Run
 
 From this repo:
 
@@ -91,6 +84,7 @@ scripts/run_official_local.sh
 Useful options:
 
 ```bash
+OFFICIAL_TRACK1_DIR=/path/to/hackathon-2026-official/track-1 LIMIT=2 scripts/run_official_local.sh
 LIMIT=10 AGENT=agents.heuristic scripts/run_official_local.sh
 LIMIT=10 AGENT=agents.routed scripts/run_official_local.sh
 OUT=/tmp/rca-out LIMIT=2 scripts/run_official_local.sh
@@ -104,16 +98,34 @@ By default, outputs go to:
 
 Do not commit the Featherless API key. Export it only in your shell.
 
-## Next Steps
+## Judge Command
 
-1. Keep the official `run.py` contract intact.
-2. Build one simple real agent module to replace the starter heuristic.
-3. Add telemetry summarization over metrics, traces, and targeted logs.
-4. Compare routed GLM use against a single-model baseline.
-5. Improve evidence quality and uncertainty reporting.
+The root `Dockerfile` supports the required command shape:
+
+```bash
+docker build -t your-team .
+docker run --rm \
+  -e FEATHERLESS_API_KEY=<key> \
+  -v <bundle>:/data:ro \
+  -v <empty-folder>:/out \
+  your-team \
+  python run.py --dataset /data --queries /data/query.csv --out /out
+```
+
+## Agent
+
+Default agent: `agents.telemetry_routed`.
+
+It parses the window and failure count from each instruction, builds bounded candidates from metrics, logs, and traces, and emits a best guess even when telemetry or model calls are inconclusive. Evidence files include the selected answer, confidence, telemetry facts used, and nearby candidates ruled out.
+
+## AI Tool Disclosure
+
+Codex was used to generate the submission structure, Dockerfile, `run.py`, telemetry agent, validation helper, and draft documentation. The team should update this section before submission with every AI model, coding assistant, and agent framework used during final development, plus what was AI-generated versus manually written.
 
 ## Docs
 
+- `REPORT.md`
+- `eval/README.md`
 - `docs/mantisgrid-track1-rca-por.md`
 - `docs/mantisgrid-hackathon-implementation-plan.md`
 - `docs/mantisgrid-codex-hackathon-guidelines.md`
