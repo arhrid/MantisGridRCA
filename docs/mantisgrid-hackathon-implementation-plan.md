@@ -16,7 +16,7 @@ Workspace update:
 - Remote: `https://github.com/arhrid/MantisGridRCA`.
 - Repo currently contains planning docs only; no implementation has started yet.
 - Runtime decision: run locally with a Python environment, not Docker, unless later hackathon instructions require packaging.
-- Track 1 slide details have been captured in the POR: 12 GB telemetry, 70 labeled cases, starter pack, 7 GLM models via Featherless, and an emphasis on routing plus explainability.
+- Latest Track 1 event details are captured from `docs/IMG_7071.JPG`: 12 GB telemetry, 70 answered cases, starter pack that runs end to end, 7 GLM models through Featherless, and judging emphasis on routing and explainability.
 
 Current docs:
 
@@ -59,9 +59,11 @@ Deliverables:
 
 - Captured start-of-hackathon update notes.
 - Inventory of available datasets, APIs, docs, and sample eval data.
+- Located starter pack and verified local end-to-end run command.
+- Featherless/GLM model access notes, without recording secrets.
 - Confirmed local setup requirements.
 - List of assumptions that changed from the POR docs.
-- Updated open questions in Track 1 and Track 2 POR docs.
+- Updated open questions in the Track 1 POR doc.
 
 Acceptance criteria:
 
@@ -71,7 +73,8 @@ Acceptance criteria:
 - We know whether direct API access is possible.
 - We know whether MCP is required.
 - We know how to use the provided Featherless key and 7 GLM models.
-- We know whether other external LLM APIs are allowed.
+- We know whether external LLM APIs are allowed.
+- We know how to access the provided GLM models and how to compare routed versus one-model baselines.
 - We know whether judging criteria or deliverables changed.
 
 Validation:

@@ -12,14 +12,16 @@ Based on the MantisGrid event materials and discussion so far:
 
 - Track 1 is Infrastructure Root Cause Analysis.
 - Participants receive 12 GB of real telemetry.
-- The telemetry includes metrics, traces, and logs.
+- The telemetry includes metrics, logs, and traces.
 - Participants receive 70 cases with answers included.
-- The challenge is to build an accurate and efficient agent that finds the root cause of real failures.
+- The challenge is to build an accurate and efficient agent that names the time, failed component, and cause while separating cause from downstream symptoms.
 - The event provides labeled answers for evaluation.
-- The slide describes a starter pack that already runs end to end.
-- The slide describes 7 GLM models available through a provided Featherless key.
+- The event provides a starter pack that already runs end to end.
+- The event provides 7 GLM models through a Featherless key.
+- Participants should create their own benchmarks, including routed-model behavior versus a single-model baseline.
 - No model training is needed.
 - The track is aligned with agent frameworks, evaluation, and distributed-system debugging.
+- The track emphasis is routing and explainability.
 - Published-agent baseline context: the best published agent referenced on the slide solves 18 of 70 cases.
 
 ## Additional Working Information
@@ -65,8 +67,9 @@ Design implications:
 - The system should feel like a distributed-systems investigator, not a log summarizer.
 - The RCA loop should correlate metrics, logs, traces, cluster state, workload context, resource health, and dependency context.
 - The internal data model should preserve a lightweight reliability graph mindset: clusters, nodes, workloads, services, jobs, GPUs or accelerators, incidents, metrics, logs, traces, and dependency edges where available.
-- Final answers should distinguish observed symptoms from the likely root cause.
-- Evaluation should track correctness and investigation efficiency, reflecting the product emphasis on MTTR reduction.
+- Final answers should name the failure time, failed component, likely root cause, observed downstream symptoms, and supporting evidence.
+- Evaluation should track correctness, investigation efficiency, evidence quality, and routing efficiency across the provided model set.
+- Benchmarks should include a routed-model approach versus a one-model baseline.
 - Recommendations should be concrete and operational, even if automated remediation is outside the initial build.
 
 Useful public references:
@@ -958,12 +961,14 @@ This is a proposed shape only. The actual structure should adapt once the provid
 - What exact file formats will MantisGrid provide for metrics, logs, traces, incidents, and labels?
 - What MantisGrid API endpoints and objects are available?
 - Are APIs the primary telemetry access path, or are static files also provided?
+- Where is the provided starter pack, and what command proves it runs end to end locally?
+- What interface, cost model, rate limits, and model IDs apply to the 7 GLM models on the Featherless key?
 - Is MCP required, optional, or mainly a convenience layer?
 - What MCP transport is used: stdio, HTTP, SSE, or another mechanism?
 - How should API credentials be supplied to the local runtime?
 - Are there API rate limits or query budgets that should be included in the efficiency score?
 - Are incident labels visible during development, hidden during scoring, or split into train/test sets?
-- What is the expected answer format for root cause?
+- What is the expected answer format for time, component, cause, symptoms, and evidence?
 - Will judging prioritize exact root-cause classification, natural-language explanation, evidence quality, latency, cost, or a combination?
 - Are external LLM APIs allowed during judging?
 - Are there limits on internet access, API keys, or cloud inference during the hackathon?
@@ -973,22 +978,24 @@ This is a proposed shape only. The actual structure should adapt once the provid
 
 ## Near-Term Build Sequence
 
-1. Confirm dataset format, API surface, authentication model, rate limits, and evaluation rules.
-2. Create the local Python project skeleton.
-3. Build the direct MantisGrid API client.
-4. Implement optional MCP adapter only if required or clearly useful.
-5. Load or cache incidents and telemetry into DuckDB or Polars where useful.
-6. Define the investigation state schema and trace logging format.
-7. Build read-only telemetry tools over direct APIs and/or local cache.
-8. Implement the LLM-stepped RCA workflow.
-9. Add provider-independent LLM calls using manual JSON tool requests initially.
-10. Build a minimal Streamlit UI for single-incident investigation.
-11. Add batch evaluation against gold incidents.
-12. Iterate on prompts, tool summaries, budgets, caching, and stopping criteria.
-13. Preserve reusable telemetry and dashboard components for Track 2.
+1. Confirm starter-pack location, local run command, dataset format, API surface, authentication model, rate limits, and evaluation rules.
+2. Run the starter pack end to end before replacing or extending it.
+3. Create or adapt the local Python project skeleton around the starter pack.
+4. Build the direct MantisGrid API client or file-backed loader, depending on the starter-pack shape.
+5. Implement optional MCP adapter only if required or clearly useful.
+6. Load or cache incidents and telemetry into DuckDB or Polars where useful.
+7. Define the investigation state schema and trace logging format around time, component, cause, symptoms, and evidence.
+8. Build read-only telemetry tools over direct APIs and/or local cache.
+9. Implement the LLM-stepped RCA workflow.
+10. Add provider-independent LLM calls and support routing among the provided GLM models.
+11. Add a one-model baseline and routed-model benchmark harness.
+12. Build a minimal Streamlit UI for single-incident investigation.
+13. Add batch evaluation against the 70 answered cases, keeping labels out of the investigation loop.
+14. Iterate on prompts, tool summaries, budgets, caching, stopping criteria, and model-routing policy.
+15. Preserve reusable telemetry and dashboard components for Track 2.
 
 ## Current Decision
 
-The Plan of Record is to build a local Python RCA system with a Streamlit UI, direct API-backed telemetry access, optional MCP support, optional local caching and querying, constrained telemetry tools, cloud LLM inference through a replaceable interface, an LLM-stepped RCA workflow, and a first-class evaluation harness.
+The Plan of Record is to build a local Python RCA system that starts from the provided end-to-end starter pack, uses direct API-backed or file-backed telemetry access as appropriate, supports optional MCP, performs constrained telemetry investigation, routes across the provided GLM models where useful, and evaluates both accuracy and explainability against the 70 answered cases.
 
-This keeps the project centered on the Track 1 scoring problem: an accurate and efficient root-cause investigation system over real cluster telemetry.
+This keeps the project centered on the Track 1 scoring problem: an accurate, evidence-backed, and explainable root-cause investigation system over real cluster telemetry.
