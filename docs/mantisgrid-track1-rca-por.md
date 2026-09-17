@@ -19,6 +19,10 @@ Based on the MantisGrid event materials and discussion so far:
 - The event provides a starter pack that already runs end to end.
 - The event provides 7 GLM models through a Featherless key.
 - Participants should create their own benchmarks, including routed-model behavior versus a single-model baseline.
+- The official repo is cloned at `/Users/benchong/Work/Hackathon/hackathon-2026-official`; Track 1 materials are under `track-1/`.
+- The official starter pack is under `track-1/starter/`, with `run.py`, Dockerfile, baseline agent, scorer, cost utility, and validation scripts.
+- Final judging builds a Docker image from a root-level Dockerfile and runs `python run.py --dataset /data --queries /data/query.csv --out /out`.
+- The final agent must write `predictions.csv`, `evidence/<row_id>.md`, and `usage.jsonl`.
 - No model training is needed.
 - The track is aligned with agent frameworks, evaluation, and distributed-system debugging.
 - The track emphasis is routing and explainability.
@@ -88,9 +92,9 @@ The strongest solution shape is:
 
 **Incident -> affected entities -> dependency context -> constrained telemetry tools -> routed hypothesis loop -> evidence-backed RCA -> evaluation**
 
-The infrastructure should stay simple and local:
+The development infrastructure should stay simple and local, while preserving the official Docker submission contract:
 
-**Mac laptop -> local Python RCA backend -> direct MantisGrid APIs and/or local telemetry cache -> Streamlit browser UI**
+**Mac laptop -> local Python RCA backend/starter pack -> file-backed telemetry queries -> Dockerized headless submission**
 
 with optional cloud LLM inference through a provider-independent interface.
 
@@ -106,8 +110,8 @@ Mac laptop host
         |     +-- RCA workflow state machine
         |     +-- Provider-independent LLM interface
         |     +-- Tool dispatcher and validators
-        |     +-- Direct MantisGrid API client
-        |     +-- Optional MCP adapter
+        |     +-- File-backed telemetry query layer
+        |     +-- Official run.py-compatible entry point
         |
         +-- Local telemetry storage / cache
         |     |
@@ -115,6 +119,10 @@ Mac laptop host
         |     +-- Cached or materialized metrics/logs/traces/incidents
         |
         +-- Streamlit localhost UI
+        |     |
+        |     +-- Optional local/demo UI only; not part of Track 1 scoring
+        |
+        +-- Root Dockerfile for official judging
         |
         +-- Evaluation harness
               |
@@ -124,7 +132,7 @@ Mac laptop host
 
 Important boundary:
 
-**The cloud LLM should not directly call MantisGrid APIs or telemetry tools.** The local Python backend should call the APIs directly on the host, optionally through MCP if useful or required, then pass only bounded prompts, tool results, and summarized evidence to the LLM.
+**The cloud LLM should not directly read unrestricted telemetry.** The local Python backend should query the official dataset from `--dataset`, pass only bounded prompts, tool results, and summarized evidence to the LLM, and write all outputs only under `--out`.
 
 ## Terminology: Agent vs. LLM
 
@@ -158,14 +166,14 @@ Rationale:
 
 ### Runtime
 
-Use a local Python runtime for the hackathon. Add Docker packaging only if later event instructions require it.
+Use a local Python runtime for development, but maintain the official Docker submission path from the start.
 
 Rationale:
 
-- Keeps setup reproducible.
-- Avoids dependency drift across machines.
-- Makes the system easier to hand off, demo, or rerun.
-- Provides enough isolation without introducing Kubernetes or cloud deployment complexity.
+- Local iteration is faster during development.
+- The official judge runs Docker, so the final repo must have exactly one root-level Dockerfile.
+- The agent must run headless and unattended in the judge container.
+- Docker packaging should be tested early with `make docker`.
 
 ### Implementation Language
 
@@ -179,7 +187,7 @@ Rationale:
 
 ## Data and API Layer
 
-Use direct MantisGrid API access as the default data path. Treat MCP as an optional adapter unless final instructions require it.
+Use the official file-backed telemetry bundle as the default data path. Track 1 judging mounts the dataset read-only at `--dataset`; the agent must query files from that directory and write only to `--out`.
 
 Use local storage and query through DuckDB or Polars where useful:
 
@@ -578,11 +586,11 @@ The cloud LLM should receive only the minimum context needed to reason:
 
 The cloud LLM should not receive unrestricted raw telemetry dumps, API credentials, or direct network access to MantisGrid services.
 
-## User Interface
+## Development UI
 
-Use Streamlit running on localhost in the browser.
+Track 1 has no judged interface dimension. Use Streamlit, notebooks, or CLI views only if they accelerate local development, demo preparation, or debugging.
 
-The UI should support:
+Any optional development UI may support:
 
 - Selecting an incident.
 - Running the RCA workflow.
@@ -606,9 +614,9 @@ Preferred answer display:
 
 Rationale:
 
-- Streamlit is fast enough for a hackathon demo.
-- Browser UI avoids native Mac app complexity.
-- The UI can remain thin while the RCA workflow and evaluation harness carry the core value.
+- The final judged artifact is a headless agent that writes files.
+- A lightweight local UI can still help explain traces and evidence during the four-minute presentation.
+- The UI must not become a dependency for `run.py`.
 
 ## Evaluation Harness
 
@@ -907,13 +915,10 @@ The Track 1 architecture should preserve a path toward Track 2: Cluster Efficien
 
 Shared foundations:
 
-- Direct MantisGrid API client.
-- Optional MCP adapter.
 - Local telemetry ingestion and caching.
 - DuckDB or Polars query layer.
 - Cluster summary utilities.
 - Metrics aggregation.
-- Streamlit UI shell.
 - Evidence views and dashboard components.
 
 Possible Track 2 extensions:
@@ -961,12 +966,11 @@ This is a proposed shape only. The actual structure should adapt once the provid
 - What exact file formats will MantisGrid provide for metrics, logs, traces, incidents, and labels?
 - What MantisGrid API endpoints and objects are available?
 - Are APIs the primary telemetry access path, or are static files also provided?
-- Where is the provided starter pack, and what command proves it runs end to end locally?
-- What interface, cost model, rate limits, and model IDs apply to the 7 GLM models on the Featherless key?
-- Is MCP required, optional, or mainly a convenience layer?
-- What MCP transport is used: stdio, HTTP, SSE, or another mechanism?
-- How should API credentials be supplied to the local runtime?
-- Are there API rate limits or query budgets that should be included in the efficiency score?
+- Which files from official `track-1/starter/` should be copied directly versus adapted?
+- What local data download path will be used for the Market-cloudbed-1 bundle?
+- What model-routing tiers should map to the official GLM models, prices, and context limits in `track-1/docs/models.md`?
+- How should the agent handle Featherless capacity errors and fallback policy?
+- How should API credentials be supplied locally without committing secrets?
 - Are incident labels visible during development, hidden during scoring, or split into train/test sets?
 - What is the expected answer format for time, component, cause, symptoms, and evidence?
 - Will judging prioritize exact root-cause classification, natural-language explanation, evidence quality, latency, cost, or a combination?
@@ -978,24 +982,23 @@ This is a proposed shape only. The actual structure should adapt once the provid
 
 ## Near-Term Build Sequence
 
-1. Confirm starter-pack location, local run command, dataset format, API surface, authentication model, rate limits, and evaluation rules.
-2. Run the starter pack end to end before replacing or extending it.
-3. Create or adapt the local Python project skeleton around the starter pack.
-4. Build the direct MantisGrid API client or file-backed loader, depending on the starter-pack shape.
-5. Implement optional MCP adapter only if required or clearly useful.
-6. Load or cache incidents and telemetry into DuckDB or Polars where useful.
-7. Define the investigation state schema and trace logging format around time, component, cause, symptoms, and evidence.
-8. Build read-only telemetry tools over direct APIs and/or local cache.
-9. Implement the LLM-stepped RCA workflow.
-10. Add provider-independent LLM calls and support routing among the provided GLM models.
-11. Add a one-model baseline and routed-model benchmark harness.
-12. Build a minimal Streamlit UI for single-incident investigation.
-13. Add batch evaluation against the 70 answered cases, keeping labels out of the investigation loop.
-14. Iterate on prompts, tool summaries, budgets, caching, stopping criteria, and model-routing policy.
-15. Preserve reusable telemetry and dashboard components for Track 2.
+1. Copy or adapt official `track-1/starter/` into the Track 1 repo, preserving the `run.py` CLI contract.
+2. Download the Market-cloudbed-1 bundle into the expected local data path and run `make validate`.
+3. Run `make dev` and `make score` against the 70 development cases.
+4. Add a root-level Dockerfile and verify `FEATHERLESS_API_KEY=<key> make docker`.
+5. Define the investigation state schema and trace logging format around time, component, cause, symptoms, and evidence.
+6. Build file-backed telemetry tools that read the official dataset in chunks under memory limits.
+7. Implement the LLM-stepped RCA workflow.
+8. Add provider-independent GLM calls and support routing among the provided GLM models.
+9. Add model-unavailability detection, retry, fallback, and per-case stopping policy.
+10. Add a one-model baseline and routed-model benchmark harness.
+11. Ensure output formatting exactly matches `predictions.csv` and `evidence/<row_id>.md` requirements.
+12. Add batch evaluation against the 70 answered cases, keeping labels out of the investigation loop.
+13. Iterate on prompts, tool summaries, budgets, caching, stopping criteria, and model-routing policy.
+14. Write `REPORT.md` with eval, model comparison, failure taxonomy, and AI/tooling disclosure.
 
 ## Current Decision
 
-The Plan of Record is to build a local Python RCA system that starts from the provided end-to-end starter pack, uses direct API-backed or file-backed telemetry access as appropriate, supports optional MCP, performs constrained telemetry investigation, routes across the provided GLM models where useful, and evaluates both accuracy and explainability against the 70 answered cases.
+The Plan of Record is to build a Docker-submittable, headless Python RCA agent that starts from the official Track 1 starter pack, queries file-backed telemetry under the official `run.py` contract, routes across the provided GLM models, survives model capacity failures, and evaluates both accuracy and explainability against the 70 development cases.
 
 This keeps the project centered on the Track 1 scoring problem: an accurate, evidence-backed, and explainable root-cause investigation system over real cluster telemetry.
