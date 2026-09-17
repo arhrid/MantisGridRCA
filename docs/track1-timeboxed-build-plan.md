@@ -117,13 +117,110 @@ Future routing, if time:
 
 ### 4. Evaluate Quickly
 
-Run three configurations:
+Run three configurations. The point is not just to get a score; it is to understand what each layer is buying us.
+
+#### Config A: `agents.heuristic`
+
+Command:
 
 ```bash
 LIMIT=10 AGENT=agents.heuristic scripts/run_official_local.sh
+```
+
+What it is:
+
+- A no-LLM baseline.
+- Reads only metrics.
+- Uses robust z-scores to find the loudest anomalous component.
+- Guesses the root-cause reason from KPI-name keywords.
+- Costs $0 in model calls.
+
+Why we run it:
+
+- It tells us the minimum bar.
+- If our LLM agent cannot beat this, our model calls are not adding value.
+- It helps identify cases where simple metric spikes are enough.
+
+Expected weakness:
+
+- Often picks the loudest symptom, not the root cause.
+- Does not inspect logs.
+- Does not inspect traces.
+- Weak for network faults and causality.
+
+#### Config B: `agents.routed`
+
+Command:
+
+```bash
 LIMIT=10 AGENT=agents.routed scripts/run_official_local.sh
+```
+
+What it is:
+
+- The official starter's example LLM agent.
+- Still starts from the heuristic candidate ranking.
+- Uses a cheap GLM model for simple reading/formatting.
+- Uses a stronger GLM model to choose from ranked candidates.
+- Falls back if a model is busy or returns an invalid answer.
+
+Why we run it:
+
+- It proves Featherless, model routing, token accounting, and fallback behavior work.
+- It is the official example of the required routed-vs-single-model idea.
+- It gives us a comparison between "heuristic only" and "heuristic plus LLM choice."
+
+Expected weakness:
+
+- The candidate packet is still metric-heavy.
+- It does not deeply use logs or traces.
+- The LLM can only choose from candidates it is shown.
+- If the heuristic ranking misses the true cause, the LLM may never see the right answer.
+
+#### Config C: `agents.mantis`
+
+Command:
+
+```bash
 LIMIT=10 AGENT=agents.mantis scripts/run_official_local.sh
 ```
+
+What it is:
+
+- Our planned simple real agent.
+- Python first reduces telemetry into a compact evidence packet.
+- The packet should include metric anomalies, service-level symptoms, and targeted log/trace signals where available.
+- One LLM decision call chooses the answer from grounded candidates.
+- Python validates and formats the final prediction.
+- Evidence is written from deterministic data, not invented prose.
+
+Why we run it:
+
+- This tests our actual hypothesis: better telemetry summaries should beat the starter.
+- It separates "better evidence" from "more model calls."
+- It gives us the agent we can tune under time pressure.
+
+Expected weakness:
+
+- First version may still miss deep trace causality.
+- It may be weak on multi-failure windows.
+- It may need better candidate generation before prompt tuning helps.
+
+#### Optional Config D: Single-Model Ablation
+
+After `agents.mantis` exists, run it with routing disabled or pinned to one model.
+
+Example shape:
+
+```bash
+LIMIT=10 RCA_MODEL=zai-org/GLM-5.2 AGENT=agents.mantis scripts/run_official_local.sh
+```
+
+Why we run it:
+
+- The scoring docs expect a routed-vs-single-model comparison.
+- This tells us whether routing actually saves money or time without hurting score.
+- If routing does not help, that is still a valid finding for the report.
 
 Then score each output with `starter/score.py`.
 
@@ -200,4 +297,3 @@ Good enough for this hackathon means:
 - Honest evidence for every answer.
 - Clear cost/time comparison.
 - A report that says what worked, what failed, and why.
-
