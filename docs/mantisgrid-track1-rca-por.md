@@ -10,18 +10,19 @@ The working objective is to build a focused, accurate, and efficient RCA system 
 
 Based on the MantisGrid event materials and discussion so far:
 
-- Track 1 is Root Cause Analysis.
+- Track 1 is Infrastructure Root Cause Analysis.
 - Participants receive 12 GB of real telemetry.
 - The telemetry includes metrics, logs, and traces.
 - Participants receive 70 cases with answers included.
-- The challenge is to build an agent that names the time, component, and cause of a failure while separating cause from downstream symptoms.
-- The expected output should include evidence for every answer.
+- The challenge is to build an accurate and efficient agent that names the time, failed component, and cause while separating cause from downstream symptoms.
+- The event provides labeled answers for evaluation.
 - The event provides a starter pack that already runs end to end.
 - The event provides 7 GLM models through a Featherless key.
 - Participants should create their own benchmarks, including routed-model behavior versus a single-model baseline.
 - No model training is needed.
 - The track is aligned with agent frameworks, evaluation, and distributed-system debugging.
 - The track emphasis is routing and explainability.
+- Published-agent baseline context: the best published agent referenced on the slide solves 18 of 70 cases.
 
 ## Additional Working Information
 
@@ -31,8 +32,22 @@ Based on discussion so far:
 - MCP support may be available or required, but the current plan is to run the project locally without Docker.
 - The MCP server may be available as one interface to the data, but it does not need to be the default path if the MantisGrid APIs can be called directly.
 - Direct API access should be the default design assumption; MCP should remain an optional adapter unless final instructions require it.
+- The Track 1 screenshot emphasizes model routing and explainability. This should shape the implementation toward routed model selection, evidence discipline, and transparent reasoning traces.
+- The slide states that the telemetry will not fit in model context and should be queried through tools rather than pasted into prompts.
 
 These details should be confirmed against final event instructions, especially the exact API surface, authentication model, rate limits, and whether MCP is required, optional, or mainly provided as a convenience layer.
+
+## Slide-Captured Requirements
+
+The Track 1 challenge slide adds the following concrete deliverables and success signals:
+
+- Create an agent that names the incident time, failed component, and cause.
+- Provide evidence for every answer.
+- Produce benchmarks comparing routed model use against a single-model baseline.
+- Query telemetry instead of trying to fit raw telemetry into context.
+- Use model routing where it saves tokens or improves investigation quality.
+- Be honest about uncertainty; a reasoned negative result is better than a vague claim.
+- Focus on routing and explainability.
 
 ## Product Signals From MantisGrid
 
@@ -71,7 +86,7 @@ Track 1 is primarily an agent-plus-tools-plus-evaluation problem rather than a U
 
 The strongest solution shape is:
 
-**Incident -> affected entities -> dependency context -> constrained telemetry tools -> hypothesis loop -> evidence-backed RCA -> evaluation**
+**Incident -> affected entities -> dependency context -> constrained telemetry tools -> routed hypothesis loop -> evidence-backed RCA -> evaluation**
 
 The infrastructure should stay simple and local:
 
@@ -224,7 +239,7 @@ Incident context
   +-- Step 1: Incident intake prompt
   |       -> summarize incident, affected entities, initial symptoms
   |
-  +-- Step 2: Hypothesis generation prompt
+  +-- Step 2: Routed hypothesis generation prompt
   |       -> candidate root causes, expected confirming/refuting evidence
   |
   +-- Step 3: Tool planning prompt
@@ -233,7 +248,7 @@ Incident context
   +-- Python backend executes approved tools
   |       -> metrics, logs, traces, resource health, topology, changes
   |
-  +-- Step 4: Evidence interpretation prompt
+  +-- Step 4: Routed evidence interpretation prompt
   |       -> evidence for/against each hypothesis
   |
   +-- Step 5: Hypothesis update prompt
@@ -248,6 +263,7 @@ Incident context
 The Python backend owns:
 
 - Workflow step selection.
+- Model routing decisions.
 - Prompt construction.
 - Structured output validation.
 - Tool execution.
@@ -264,6 +280,20 @@ The LLM contributes:
 - Evidence interpretation.
 - Confidence updates.
 - Final root-cause explanation.
+
+## Model Routing and Benchmarking
+
+The slide explicitly asks for benchmarks comparing routed model use against a single-model baseline. Treat routing as part of the core system design, not only a cost optimization.
+
+Initial routing strategy:
+
+- Use cheaper or faster models for intake, summarization, and broad hypothesis generation.
+- Use stronger models for final evidence synthesis, difficult hypothesis arbitration, and low-confidence cases.
+- Keep a single-model baseline configuration that can run the same incidents for comparison.
+- Record per-step model choice, latency, token usage, tool-call count, and final score in the trace.
+- Evaluate whether routing improves cost, latency, or accuracy without reducing explainability.
+
+The provided Featherless key and 7 GLM models should be treated as the first expected model pool, subject to final event credentials and SDK details.
 
 ## Investigation State
 
@@ -605,6 +635,8 @@ Primary evaluation goals:
 - Efficiency: how many calls, how much time, and how much inference did it need?
 - Explainability: did the answer include evidence that a human judge can inspect?
 - Operational usefulness: did the answer help reduce MTTR by pointing to the affected entity, causal mechanism, blast radius, and next action?
+- Routing value: did routed model selection improve accuracy, latency, cost, or token usage relative to a single-model baseline?
+- Honesty under uncertainty: did the system clearly explain when evidence was insufficient instead of making a vague unsupported claim?
 
 Evaluation artifacts to persist:
 
@@ -940,6 +972,7 @@ This is a proposed shape only. The actual structure should adapt once the provid
 - Will judging prioritize exact root-cause classification, natural-language explanation, evidence quality, latency, cost, or a combination?
 - Are external LLM APIs allowed during judging?
 - Are there limits on internet access, API keys, or cloud inference during the hackathon?
+- Is the 12 GB telemetry delivered as one archive, multiple files, or API-backed records?
 - Are traces OpenTelemetry-compatible or in a custom format?
 - Is topology, dependency, configuration, deployment, or scheduling-change data available?
 
