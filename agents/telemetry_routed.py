@@ -19,6 +19,7 @@ from run import Solution, format_prediction  # noqa: E402
 MONTHS = {m: i for i, m in enumerate(
     ["january", "february", "march", "april", "may", "june", "july", "august",
      "september", "october", "november", "december"], 1)}
+DATASET_TZ = timezone(timedelta(hours=8))
 
 REASONS = [
     "container CPU load",
@@ -89,7 +90,7 @@ def parse_window(instruction: str) -> tuple[datetime, datetime] | None:
     mon, day, year, h1, m1, h2, m2 = m.groups()
     if mon.lower() not in MONTHS:
         return None
-    base = datetime(int(year), MONTHS[mon.lower()], int(day), tzinfo=timezone.utc)
+    base = datetime(int(year), MONTHS[mon.lower()], int(day), tzinfo=DATASET_TZ)
     lo = base + timedelta(hours=int(h1), minutes=int(m1))
     hi = base + timedelta(hours=int(h2), minutes=int(m2))
     if hi <= lo:
@@ -201,11 +202,13 @@ def metric_candidates(dataset: Path, lo: datetime, hi: datetime) -> list[Candida
         when = lo
         if not series.empty:
             idx = (series.value - picked.med).abs().idxmax()
-            when = datetime.fromtimestamp(float(series.loc[idx, "timestamp"]), tz=timezone.utc)
+            when = datetime.fromtimestamp(float(series.loc[idx, "timestamp"]), tz=DATASET_TZ)
+        picked_fields = picked._asdict() if hasattr(picked, "_asdict") else picked.to_dict()
+        source = picked_fields.get("source", "metric")
         facts = [
-            f"{picked.source}/{picked.cmdb_id}/{picked.kpi_name}: robust z={float(picked.z):.1f}, "
-            f"baseline median={float(picked.med):.4g}, in-window min={float(picked.min):.4g}, "
-            f"max={float(picked.max):.4g}",
+            f"{source}/{picked_fields['cmdb_id']}/{picked_fields['kpi_name']}: robust z={float(picked_fields['z']):.1f}, "
+            f"baseline median={float(picked_fields['med']):.4g}, in-window min={float(picked_fields['min']):.4g}, "
+            f"max={float(picked_fields['max']):.4g}",
         ]
         candidates.append(Candidate(comp, reason or "container CPU load", when, float(picked.z), "metrics", facts))
     return sorted(candidates, key=lambda c: c.score, reverse=True)
@@ -243,7 +246,7 @@ def trace_candidates(dataset: Path, lo: datetime, hi: datetime) -> list[Candidat
         if row.spans < 5:
             continue
         score = float(row.p95_ms) / 100.0 + float(row.errors) * 5.0
-        when = datetime.fromtimestamp(float(row.first_ms) / 1000.0, tz=timezone.utc)
+        when = datetime.fromtimestamp(float(row.first_ms) / 1000.0, tz=DATASET_TZ)
         reason = "container network latency"
         if row.errors > max(3, row.spans * 0.02):
             reason = "container packet loss"
