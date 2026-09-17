@@ -302,7 +302,67 @@ Next tuning step:
 2. If model choice does not move score, stop spending time on model selection and improve evidence generation.
 3. The likely evidence-generation improvement is targeted trace/service relationship summary, because metric-only evidence tends to pick loud symptoms rather than causal components.
 
-Execution notes:
+## Tweak Log
+
+Track every scoring/cost tweak here so we do not re-test the same idea without a new reason.
+
+### Tweak 1: Local run wrapper and clean output
+
+- Change: added `scripts/run_official_local.sh` to run the official starter locally, load `.env.local`, clean `OUT` by default, print predictions beside `scoring_points`, and print a score summary.
+- Result: made fast local iteration possible without Docker.
+- Keep: yes.
+- Notes: every run clobbers `OUT` unless `CLEAN_OUT=0`.
+
+### Tweak 2: Single-call `agents.mantis`
+
+- Change: created `agents.mantis` as a small wrapper around the official heuristic candidate generation plus one bounded LLM decision call.
+- Result: valid official output shape, deterministic evidence files, and no extra evidence-prose LLM call.
+- Keep: yes.
+- Notes: if the LLM is unavailable, it falls back to `agents.heuristic`.
+
+### Tweak 3: Service-level symptom summary
+
+- Change: added compact `metric_service.csv` summaries for latency ratio and success-rate drop.
+- Result: useful context for matching symptomatic services to candidate pods.
+- Keep: yes.
+- Notes: this helps candidate selection, but service symptoms alone do not prove root cause.
+
+### Tweak 4: Prompt tightening
+
+- Change: instructed the LLM to pick only from shown candidates, use only legal reason strings, prefer root causes over downstream symptoms, and avoid choosing nodes only because aggregate TCP/network counters are large.
+- Result: reduced sloppy output and token use, but did not fix row 0.
+- Keep: yes.
+- Notes: prompt-only changes are not enough if the evidence packet is weak.
+
+### Tweak 5: Model knob
+
+- Change: added `RCA_MODEL` and `MANTIS_MODELS` so we can compare Featherless models without code changes.
+- Result: `RCA_MODEL=zai-org/GLM-4.7-Flash` on the first two cases produced the same score and failure classes as the stronger-model run, at lower expected cost.
+- Keep: yes.
+- Notes: model choice alone is not the main bottleneck so far.
+
+### Tweak 6: Optional trace summary
+
+- Change: added compact `trace_span.csv` p95/error summaries behind `MANTIS_TRACE_SUMMARY=1`.
+- Result: first row-0 test did not improve the answer and added noticeable runtime/prompt overhead.
+- Keep: behind flag only.
+- Notes: use it selectively for network/latency-looking cases rather than the default run.
+
+### Tweak 7: `reason_quality` and `evidence_score`
+
+- Change: labelled candidates as direct KPI matches vs fallback reasons and adjusted ranking with service matches.
+- Result: made candidate packets more honest but did not change first two answers.
+- Keep: yes.
+- Notes: helped expose that the model was seeing weak/ambiguous reason evidence.
+
+### Tweak 8: Reason-evidence extractor
+
+- Change: added candidate-level `reason_evidence` with one strongest KPI per legal reason family, source labels (`candidate_metric`, `host_node_metric`), and a weak `inferred_storage` hint for pod filesystem usage metrics.
+- Result: local no-network smoke test passes. Evidence now surfaces `shippingservice-1` with `container read I/O load` support, but fallback prediction remains the old heuristic when the LLM call is unavailable.
+- Keep: yes, pending LLM-backed `LIMIT=10` validation.
+- Notes: this is the current active experiment. It is generic and does not hard-code a scenario answer.
+
+### Current Read
 
 - `RCA_MODEL=zai-org/GLM-4.7-Flash` on the first two cases produced the same score and failure classes as the strong-model run, with lower cost than a strong-only strategy.
 - Adding a compact trace summary is available behind `MANTIS_TRACE_SUMMARY=1`, but the first row-0 test did not improve the answer and added noticeable runtime/prompt overhead.
