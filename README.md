@@ -50,9 +50,15 @@ Optional Featherless/GLM refinement:
 export FEATHERLESS_API_KEY=<your key>
 make dev DATASET=data/Market-cloudbed-1 OUT=out/routed
 RCA_MODEL=zai-org/GLM-5.2 make dev DATASET=data/Market-cloudbed-1 OUT=out/single-glm52
+make compare DATASET=data/Market-cloudbed-1 OUT=out/routed
+python scripts/compare_runs.py \
+  --queries data/Market-cloudbed-1/dev/query_dev.csv \
+  --out out/routed out/single-glm52 \
+  --report out/comparison.md
 ```
 
 The agent reads `FEATHERLESS_BASE_URL` when set and otherwise uses `https://api.featherless.ai/v1`. No key or endpoint is hard-coded.
+Without `RCA_MODEL`, the agent routes one dominant-candidate cases cheap-first through GLM Flash models and uses stronger GLM models for ambiguous or multi-failure cases. Setting `RCA_MODEL` pins every LLM call to a single model for the required ablation.
 
 ## Official Starter Local Run
 
@@ -117,6 +123,7 @@ docker run --rm \
 Default agent: `agents.telemetry_routed`.
 
 It parses the window and failure count from each instruction, builds bounded candidates from metrics, logs, and traces, and emits a best guess even when telemetry or model calls are inconclusive. Evidence files include the selected answer, confidence, telemetry facts used, and nearby candidates ruled out.
+Model calls receive only compact candidate summaries. The Featherless client retries transient provider failures, falls back across the configured model tier, strips model thinking blocks, and records per-model token usage for `cost.py` and `scripts/compare_runs.py`.
 
 ## AI Tool Disclosure
 
