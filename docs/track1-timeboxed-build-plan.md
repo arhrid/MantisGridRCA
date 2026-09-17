@@ -358,22 +358,29 @@ Track every scoring/cost tweak here so we do not re-test the same idea without a
 ### Tweak 8: Reason-evidence extractor
 
 - Change: added candidate-level `reason_evidence` with one strongest KPI per legal reason family, source labels (`candidate_metric`, `host_node_metric`), and a weak `inferred_storage` hint for pod filesystem usage metrics.
-- Result: local no-network smoke test passes. Evidence now surfaces `shippingservice-1` with `container read I/O load` support, but fallback prediction remains the old heuristic when the LLM call is unavailable.
-- Keep: yes, pending LLM-backed `LIMIT=10` validation.
+- Result: local no-network smoke test passes. Evidence now surfaces `shippingservice-1` with `container read I/O load` support. LLM-backed `LIMIT=10` scored `0.200`, with `1 / 10` fully solved.
+- Keep: yes, but it did not move the 10-case score by itself.
 - Notes: this is the current active experiment. It is generic and does not hard-code a scenario answer.
+
+### Tweak 9: Sliceable local runner
+
+- Change: added `START_ROW` to `scripts/run_official_local.sh` so we can run holdout slices without editing official query files.
+- Result: pending.
+- Keep: yes.
+- Notes: use `START_ROW=10 LIMIT=10` for rows 11-20 after a candidate-generation tweak.
 
 ### Current Read
 
-- `RCA_MODEL=zai-org/GLM-4.7-Flash` on the first two cases produced the same score and failure classes as the strong-model run, with lower cost than a strong-only strategy.
-- Adding a compact trace summary is available behind `MANTIS_TRACE_SUMMARY=1`, but the first row-0 test did not improve the answer and added noticeable runtime/prompt overhead.
-- Adding `reason_quality` and `evidence_score` made the candidate packet more honest but did not change the first two answers.
-- Current conclusion: model choice and prompt wording are not the main bottleneck. The next useful work is better telemetry features, especially reason-specific evidence such as read/write I/O, packet loss, retransmission, and process termination signals.
+- `mantis-reason-10` on rows 1-10 scored `0.200`, `1 / 10` fully solved, `234.6s` total runtime, `67,169` prompt tokens, and `5,000` completion tokens.
+- Failure classes: `candidate_missing: 4`, `candidate_present_model_wrong: 2`, `time_wrong: 2`, `reason_wrong: 1`, `perfect: 1`.
+- Current conclusion: model choice and prompt wording are not the main bottleneck. Candidate coverage is now the largest problem.
 
 Next execution target:
 
-1. Keep default runs cheap: do not enable trace summary unless testing network/causality cases.
-2. Add a reason-evidence extractor that scores each candidate against the legal reason classes.
-3. Rerun `LIMIT=10` and classify whether failures move from `candidate_present_model_wrong` toward `reason_wrong` or `time_wrong`.
+1. Improve candidate generation so expected components appear in the evidence packet more often.
+2. Keep the change generic: expand candidates through service, trace, and timing relationships rather than scenario-specific answer matching.
+3. Rerun rows 1-10 to check whether `candidate_missing` drops.
+4. Then run rows 11-20 as a holdout slice so we do not overfit the first 10 rows.
 
 Current reason-evidence slice:
 
@@ -391,6 +398,13 @@ Next validation step:
 ```bash
 LIMIT=10 RUN_NAME=mantis-reason-10 AGENT=agents.mantis RCA_MODEL=zai-org/GLM-4.7-Flash OUT=/tmp/rca-mantis-reason-10 scripts/run_official_local.sh
 scripts/eval_track1.py --out /tmp/rca-mantis-reason-10 --queries /Users/benchong/Work/Hackathon/hackathon-2026-official/track-1/data/Market-cloudbed-1/dev/query_dev.csv
+```
+
+Holdout command after the next candidate-generation tweak:
+
+```bash
+START_ROW=10 LIMIT=10 RUN_NAME=mantis-holdout-11-20 AGENT=agents.mantis RCA_MODEL=zai-org/GLM-4.7-Flash OUT=/tmp/rca-mantis-holdout-11-20 scripts/run_official_local.sh
+scripts/eval_track1.py --out /tmp/rca-mantis-holdout-11-20 --queries /tmp/rca-mantis-holdout-11-20/queries.csv
 ```
 
 This sends bounded telemetry-derived summaries to Featherless. Get team approval for that data flow before using it in the judged workflow.
