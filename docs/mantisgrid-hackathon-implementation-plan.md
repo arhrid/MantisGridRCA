@@ -8,21 +8,27 @@ This document is intentionally operational. The Track 1 and Track 2 POR docs exp
 
 ## Current Status
 
-Status: planning.
+Status: implementation started.
 
 Workspace update:
 
 - Track 1 repo is cloned at `/Users/arhrid/antima-workspace/mantisgridinfra/mgrca/MantisGridRCA`.
 - Remote: `https://github.com/arhrid/MantisGridRCA`.
-- Repo currently contains planning docs only; no implementation has started yet.
-- Runtime decision: run locally with a Python environment, not Docker, unless later hackathon instructions require packaging.
+- Repo now contains a Track 1 judge-shaped Python submission: root `Dockerfile`, `run.py`, `agents.telemetry_routed`, cost/score helpers, validation helper, `REPORT.md`, and eval notes.
+- Runtime decision updated by official Track 1 submission docs: keep local Python support, but ship Docker packaging at the repository root because judging builds and runs that image.
 - Latest Track 1 event details are captured from `docs/Track1.JPG`: 12 GB telemetry, 70 answered cases, starter pack that runs end to end, 7 GLM models through Featherless, and judging emphasis on routing and explainability.
 
-Current docs:
+Current docs and submission files:
 
 - `mantisgrid-track1-rca-por.md`
 - `mantisgrid-codex-hackathon-guidelines.md`
 - `mantisgrid-hackathon-implementation-plan.md`
+- `README.md`
+- `REPORT.md`
+- `eval/README.md`
+- `run.py`
+- `agents/telemetry_routed.py`
+- `Dockerfile`
 
 Important:
 
