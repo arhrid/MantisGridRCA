@@ -35,6 +35,7 @@ _CACHE: dict = {}
 MONTHS = {m: i for i, m in enumerate(
     ["january", "february", "march", "april", "may", "june", "july",
      "august", "september", "october", "november", "december"], 1)}
+DATASET_TZ = timezone(timedelta(hours=8))
 
 
 def parse_window(instruction: str) -> tuple[datetime, datetime] | None:
@@ -49,7 +50,7 @@ def parse_window(instruction: str) -> tuple[datetime, datetime] | None:
     mon, day, year, h1, m1, h2, m2 = m.groups()
     if mon.lower() not in MONTHS:
         return None
-    base = datetime(int(year), MONTHS[mon.lower()], int(day), tzinfo=timezone.utc)
+    base = datetime(int(year), MONTHS[mon.lower()], int(day), tzinfo=DATASET_TZ)
     lo = base + timedelta(hours=int(h1), minutes=int(m1))
     hi = base + timedelta(hours=int(h2), minutes=int(m2))
     if hi <= lo:
@@ -157,7 +158,7 @@ def analyse(instruction: str, dataset_dir: Path) -> Analysis | Solution:
     lo, hi = win
     date = lo.strftime("%Y_%m_%d")
     day = _load_day(Path(dataset_dir), date)
-    ev = [f"# Case\n\n**Window:** {lo:%Y-%m-%d %H:%M} to {hi:%H:%M} UTC  ",
+    ev = [f"# Case\n\n**Window:** {lo:%Y-%m-%d %H:%M} to {hi:%H:%M} UTC+8  ",
           f"**Telemetry day:** `{date}`  ",
           f"**Rows loaded:** {len(day):,} (metric only -- no logs, no traces)\n"]
 
@@ -208,7 +209,7 @@ def answer_for(a: Analysis, comp: str) -> dict:
     if not series.empty:
         when = datetime.fromtimestamp(
             float(series.loc[(series.value - top.med).abs().idxmax(), "timestamp"]),
-            tz=timezone.utc)
+            tz=DATASET_TZ)
     return {"datetime": when.strftime("%Y-%m-%d %H:%M:%S"), "component": comp,
             "reason": chosen}
 

@@ -302,18 +302,123 @@ Next tuning step:
 2. If model choice does not move score, stop spending time on model selection and improve evidence generation.
 3. The likely evidence-generation improvement is targeted trace/service relationship summary, because metric-only evidence tends to pick loud symptoms rather than causal components.
 
-Execution notes:
+## Tweak Log
 
-- `RCA_MODEL=zai-org/GLM-4.7-Flash` on the first two cases produced the same score and failure classes as the strong-model run, with lower cost than a strong-only strategy.
-- Adding a compact trace summary is available behind `MANTIS_TRACE_SUMMARY=1`, but the first row-0 test did not improve the answer and added noticeable runtime/prompt overhead.
-- Adding `reason_quality` and `evidence_score` made the candidate packet more honest but did not change the first two answers.
-- Current conclusion: model choice and prompt wording are not the main bottleneck. The next useful work is better telemetry features, especially reason-specific evidence such as read/write I/O, packet loss, retransmission, and process termination signals.
+Track every scoring/cost tweak here so we do not re-test the same idea without a new reason.
+
+### Tweak 1: Local run wrapper and clean output
+
+- Change: added `scripts/run_official_local.sh` to run the official starter locally, load `.env.local`, clean `OUT` by default, print predictions beside `scoring_points`, and print a score summary.
+- Result: made fast local iteration possible without Docker.
+- Keep: yes.
+- Notes: every run clobbers `OUT` unless `CLEAN_OUT=0`.
+
+### Tweak 2: Single-call `agents.mantis`
+
+- Change: created `agents.mantis` as a small wrapper around the official heuristic candidate generation plus one bounded LLM decision call.
+- Result: valid official output shape, deterministic evidence files, and no extra evidence-prose LLM call.
+- Keep: yes.
+- Notes: if the LLM is unavailable, it falls back to `agents.heuristic`.
+
+### Tweak 3: Service-level symptom summary
+
+- Change: added compact `metric_service.csv` summaries for latency ratio and success-rate drop.
+- Result: useful context for matching symptomatic services to candidate pods.
+- Keep: yes.
+- Notes: this helps candidate selection, but service symptoms alone do not prove root cause.
+
+### Tweak 4: Prompt tightening
+
+- Change: instructed the LLM to pick only from shown candidates, use only legal reason strings, prefer root causes over downstream symptoms, and avoid choosing nodes only because aggregate TCP/network counters are large.
+- Result: reduced sloppy output and token use, but did not fix row 0.
+- Keep: yes.
+- Notes: prompt-only changes are not enough if the evidence packet is weak.
+
+### Tweak 5: Model knob
+
+- Change: added `RCA_MODEL` and `MANTIS_MODELS` so we can compare Featherless models without code changes.
+- Result: `RCA_MODEL=zai-org/GLM-4.7-Flash` on the first two cases produced the same score and failure classes as the stronger-model run, at lower expected cost.
+- Keep: yes.
+- Notes: model choice alone is not the main bottleneck so far.
+
+### Tweak 6: Optional trace summary
+
+- Change: added compact `trace_span.csv` p95/error summaries behind `MANTIS_TRACE_SUMMARY=1`.
+- Result: first row-0 test did not improve the answer and added noticeable runtime/prompt overhead.
+- Keep: behind flag only.
+- Notes: use it selectively for network/latency-looking cases rather than the default run.
+
+### Tweak 7: `reason_quality` and `evidence_score`
+
+- Change: labelled candidates as direct KPI matches vs fallback reasons and adjusted ranking with service matches.
+- Result: made candidate packets more honest but did not change first two answers.
+- Keep: yes.
+- Notes: helped expose that the model was seeing weak/ambiguous reason evidence.
+
+### Tweak 8: Reason-evidence extractor
+
+- Change: added candidate-level `reason_evidence` with one strongest KPI per legal reason family, source labels (`candidate_metric`, `host_node_metric`), and a weak `inferred_storage` hint for pod filesystem usage metrics.
+- Result: local no-network smoke test passes. Evidence now surfaces `shippingservice-1` with `container read I/O load` support. LLM-backed `LIMIT=10` scored `0.200`, with `1 / 10` fully solved.
+- Keep: yes, but it did not move the 10-case score by itself.
+- Notes: this is the current active experiment. It is generic and does not hard-code a scenario answer.
+
+### Tweak 9: Sliceable local runner
+
+- Change: added `START_ROW` to `scripts/run_official_local.sh` so we can run holdout slices without editing official query files.
+- Result: pending.
+- Keep: yes.
+- Notes: use `START_ROW=10 LIMIT=10` for rows 11-20 after a candidate-generation tweak.
+
+### Tweak 10: Legal-signal candidate backfill
+
+- Change: expanded `agents.mantis` candidate generation with a backfill pass over components that have strong KPI evidence for a legal reason class.
+- Change: added node-specific shorthand mappings for `system.mem.*` and `system.io.*` metrics so node memory/disk candidates are not hidden by noisy pod/network symptoms.
+- Result: local no-LLM smoke checks now put previously missing `node-1` in row 3 evidence and `node-2` in row 8 evidence.
+- Keep: pending LLM-backed `LIMIT=10` validation.
+- Notes: this is generic candidate coverage logic; it does not key off row ids, expected answers, or scenario labels.
+
+### Tweak 11: Dataset timezone fix
+
+- Change: parse instruction windows as UTC+8, matching the dataset/scoring convention, and format occurrence times back in UTC+8.
+- Result: rows after 16:00 local time no longer fail with `No samples inside the window`; row 12 smoke test now produces a real prediction.
+- Keep: yes.
+- Notes: this changes all time windows, so rerun rows 1-10 and rows 11-20 before comparing further prompt/model tweaks.
+
+### Tweak 12: Query-aware output shaping and time candidates
+
+- Change: parse the instruction to determine which fields are requested: datetime, component, reason, or a combination.
+- Change: pass `requested_output` and compact `time_candidates` to the LLM.
+- Change: omit unrequested fields from final predictions.
+- Change: use deterministic time candidates as the fallback for time-only tasks, instead of falling back to arbitrary component peak guesses.
+- Result: local no-LLM smoke checks show time-only rows emit only datetimes and reason-only rows emit only reasons.
+- Keep: pending LLM-backed validation.
+- Notes: this targets `time_wrong` and `reason_wrong` without hard reranking candidates.
+- Architecture note: the intended shape is small/cheap NL-to-task-spec parsing, deterministic local telemetry retrieval over the parsed timespan, then a stronger LLM over the bounded evidence packet. The current implementation uses deterministic parsing first; a small LLM classifier can be added later only for ambiguous instructions.
+
+### Tweak 13: Compact LLM decision output
+
+- Change: serialize the LLM prompt as compact JSON and cap decision completions at `RCA_MAX_TOKENS`, defaulting to `300`.
+- Result: pending LLM-backed validation.
+- Keep: likely, unless JSON parsing quality drops.
+- Notes: `scoring.md` gives cost/time real weight. Deterministic evidence files still contain the detailed explanation, so the LLM does not need to spend expensive output tokens writing prose.
+
+### Current Read
+
+- `mantis-reason-10` on rows 1-10 scored `0.200`, `1 / 10` fully solved, `234.6s` total runtime, `67,169` prompt tokens, and `5,000` completion tokens.
+- `mantis-backfill-10` on rows 1-10 also scored `0.200`, but moved `candidate_missing` from `4` to `0`, so true components are now visible and the remaining issue is mostly choice/ranking.
+- The rows 11-20 holdout initially scored `0.000`, but rows 12-19 were invalid because the parser treated UTC+8 instruction times as UTC. Do not use that holdout score for model-quality conclusions.
+- `mantis-tz-10` scored `0.175`: `candidate_present_model_wrong: 4`, `time_wrong: 4`, `reason_wrong: 2`.
+- `mantis-tz-holdout-11-20` scored `0.075`: `candidate_present_model_wrong: 3`, `time_wrong: 3`, `candidate_missing: 2`, `reason_wrong: 2`.
+- `mantis-shaped-10` scored `0.275`, with `1 / 10` fully solved.
+- `mantis-shaped-holdout-11-20` scored `0.125`, with `0 / 10` fully solved.
+- `scoring.md` says accuracy, evidence/explainability, evaluation quality, and cost efficiency all matter. The state of the art is roughly one strict success in nine, so honest evidence, eval comparisons, and cost routing are important even when most cases are wrong.
 
 Next execution target:
 
-1. Keep default runs cheap: do not enable trace summary unless testing network/causality cases.
-2. Add a reason-evidence extractor that scores each candidate against the legal reason classes.
-3. Rerun `LIMIT=10` and classify whether failures move from `candidate_present_model_wrong` toward `reason_wrong` or `time_wrong`.
+1. Validate compact LLM output on rows 1-10 and rows 11-20.
+2. If accuracy does not drop, keep compact output for better cost/time.
+3. If `time_wrong` remains high, improve time candidate generation rather than candidate coverage.
+4. If `candidate_present_model_wrong` remains high, compress candidates with soft buckets instead of hard reranking.
 
 Current reason-evidence slice:
 
@@ -331,6 +436,13 @@ Next validation step:
 ```bash
 LIMIT=10 RUN_NAME=mantis-reason-10 AGENT=agents.mantis RCA_MODEL=zai-org/GLM-4.7-Flash OUT=/tmp/rca-mantis-reason-10 scripts/run_official_local.sh
 scripts/eval_track1.py --out /tmp/rca-mantis-reason-10 --queries /Users/benchong/Work/Hackathon/hackathon-2026-official/track-1/data/Market-cloudbed-1/dev/query_dev.csv
+```
+
+Holdout command after the next candidate-generation tweak:
+
+```bash
+START_ROW=10 LIMIT=10 RUN_NAME=mantis-holdout-11-20 AGENT=agents.mantis RCA_MODEL=zai-org/GLM-4.7-Flash OUT=/tmp/rca-mantis-holdout-11-20 scripts/run_official_local.sh
+scripts/eval_track1.py --out /tmp/rca-mantis-holdout-11-20 --queries /tmp/rca-mantis-holdout-11-20/queries.csv
 ```
 
 This sends bounded telemetry-derived summaries to Featherless. Get team approval for that data flow before using it in the judged workflow.

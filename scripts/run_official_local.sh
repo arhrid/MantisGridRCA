@@ -18,13 +18,30 @@ QUERIES="${QUERIES:-$DATASET/dev/query_dev.csv}"
 OUT="${OUT:-$OFFICIAL/out/local-dev}"
 AGENT="${AGENT:-agents.heuristic}"
 LIMIT="${LIMIT:-0}"
+START_ROW="${START_ROW:-0}"
 RUN_NAME="${RUN_NAME:-$AGENT}"
 CLEAN_OUT="${CLEAN_OUT:-1}"
+RUN_QUERIES="$QUERIES"
+
+if [[ "$START_ROW" != "0" ]]; then
+  RUN_QUERIES="${TMPDIR:-/tmp}/track1-queries-$$.csv"
+  START_ROW="$START_ROW" LIMIT="$LIMIT" QUERIES="$QUERIES" "$PYTHON" - <<'PY' > "$RUN_QUERIES"
+import os
+import pandas as pd
+
+queries = pd.read_csv(os.environ["QUERIES"])
+start = int(os.environ["START_ROW"])
+limit = int(os.environ["LIMIT"])
+end = None if limit == 0 else start + limit
+print(queries.iloc[start:end].to_csv(index=False), end="")
+PY
+  LIMIT=0
+fi
 
 args=(
   "$STARTER/run.py"
   --dataset "$DATASET"
-  --queries "$QUERIES"
+  --queries "$RUN_QUERIES"
   --out "$OUT"
   --agent "$AGENT"
 )
@@ -38,7 +55,8 @@ cat <<EOF
 run:     $RUN_NAME
 agent:   $AGENT
 limit:   $LIMIT
-queries: $QUERIES
+start:   $START_ROW
+queries: $RUN_QUERIES
 out:     $OUT
 EOF
 
@@ -46,10 +64,13 @@ if [[ "$CLEAN_OUT" != "0" ]]; then
   rm -rf "$OUT"
 fi
 mkdir -p "$OUT"
+if [[ "$RUN_QUERIES" != "$QUERIES" ]]; then
+  cp "$RUN_QUERIES" "$OUT/queries.csv"
+fi
 
 "$PYTHON" "${args[@]}"
 
-PREDICTIONS="$OUT/predictions.csv" QUERIES="$QUERIES" RUN_NAME="$RUN_NAME" AGENT="$AGENT" OUT="$OUT" "$PYTHON" - <<'PY'
+PREDICTIONS="$OUT/predictions.csv" QUERIES="$RUN_QUERIES" RUN_NAME="$RUN_NAME" AGENT="$AGENT" OUT="$OUT" "$PYTHON" - <<'PY'
 import csv
 import itertools
 import os

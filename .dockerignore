@@ -1,0 +1,11 @@
+.git
+.venv
+.env
+.env.local
+.DS_Store
+__pycache__/
+*.pyc
+out/
+docs/IMG_7071.JPG
+starter/__pycache__/
+starter/agents/__pycache__/
