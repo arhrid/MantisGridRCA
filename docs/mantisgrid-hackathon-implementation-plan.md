@@ -16,7 +16,7 @@ Workspace update:
 - Remote: `https://github.com/arhrid/MantisGridRCA`.
 - Repo now contains a Track 1 judge-shaped Python submission: root `Dockerfile`, `run.py`, `agents.telemetry_routed`, cost/score helpers, validation helper, `REPORT.md`, and eval notes.
 - Runtime decision: keep local Python support, but ship Docker packaging at the repository root because judging builds and runs that image.
-- Latest Track 1 event details are captured from `docs/RCAAdditionalInfo.JPG`: 12 GB telemetry, 70 answered cases, starter pack that runs end to end, 7 GLM models through Featherless, and judging emphasis on routing and explainability.
+- Latest Track 1 event details (recorded from the challenge slide, formerly `docs/RCAAdditionalInfo.JPG`) are captured in `docs/mantisgrid-track1-rca-por.md`: 12 GB telemetry, 70 answered cases, starter pack that runs end to end, 7 GLM models through Featherless, and judging emphasis on routing and explainability.
 - Official repo cloned at `/Users/benchong/Work/Hackathon/hackathon-2026-official`; Track 1 source of truth is `track-1/`.
 
 Current docs and submission files:
